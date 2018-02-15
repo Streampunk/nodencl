@@ -1,0 +1,18 @@
+{
+  "name": "nodencl",
+  "version": "0.0.1",
+  "description": "Experimental library for executing Open-CL kernels over Node.JS buffers.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Streampunk Media <furnace@streampunk.media> (http://www.streampunk.media)",
+  "license": "Apache-2.0",
+  "gypfile": true,
+  "dependencies": {
+    "bindings": "^1.3.0"
+  },
+  "devDependencies": {
+    "segfault-handler": "^1.0.0"
+  }
+}
