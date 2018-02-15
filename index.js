@@ -16,7 +16,7 @@ console.log(addon.getPlatformNames());
 console.log(addon.getDeviceNames(0));
 console.log(addon.getDeviceNames(1));
 
-console.log("Buildinh a program");
+console.log("Building a program");
 let startTime = process.hrtime();
 let clProgram = addon.buildAProgram(0, 0, kernel);
 console.log("Program completed in", process.hrtime(startTime), "with", clProgram);
