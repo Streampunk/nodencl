@@ -350,8 +350,6 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
 
   cl_mem input;
   cl_mem output;
-  void* svmInput;
-  void* svmOutput;
 
   clock_t begin;
   clock_t end;
@@ -387,7 +385,129 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
   status = napi_get_buffer_info(env, args[1], &data, &dataSize);
   assert(status == napi_ok);
 
-  printf("Data size is %i.\n", dataSize);
+  // printf("Data size is %i.\n", dataSize);
+
+  void* extvalue;
+  napi_value jsvalue;
+  status = napi_get_named_property(env, args[0], "context", &jsvalue);
+  assert(jsvalue != nullptr && status == napi_ok);
+  status = napi_get_value_external(env, jsvalue, &extvalue);
+  cl_context context = (cl_context) extvalue;
+  assert(context != nullptr);
+  assert(status == napi_ok);
+
+  status = napi_get_named_property(env, args[0], "commands", &jsvalue);
+  assert(status == napi_ok);
+  status = napi_get_value_external(env, jsvalue, &extvalue);
+  cl_command_queue commands = (cl_command_queue) extvalue;
+  assert(commands != nullptr && status == napi_ok);
+
+  status = napi_get_named_property(env, args[0], "kernel", &jsvalue);
+  assert(status == napi_ok);
+  status = napi_get_value_external(env, jsvalue, &extvalue);
+  cl_kernel kernel = (cl_kernel) extvalue;
+  assert(kernel != nullptr && status == napi_ok);
+
+  status = napi_get_named_property(env, args[0], "deviceId", &jsvalue);
+  assert(status == napi_ok);
+  status = napi_get_value_external(env, jsvalue, &extvalue);
+  cl_device_id device_id = (cl_device_id) extvalue;
+  assert(device_id != nullptr && status == napi_ok);
+
+  begin = clock();
+  input = clCreateBuffer(context, CL_MEM_READ_ONLY, dataSize,
+    nullptr, &error);
+  assert(error == CL_SUCCESS);
+  output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, dataSize,
+    nullptr, &error);
+  assert(error == CL_SUCCESS);
+  assert(input != nullptr && output != nullptr);
+  end = clock();
+  printf("Time spent allocating GPU buffers is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+
+  begin = clock();
+  error = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, dataSize,
+    data, 0, nullptr, nullptr);
+  assert(error == CL_SUCCESS);
+  end = clock();
+  //printf("Time spent writing buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+
+  error = CL_SUCCESS;
+  error = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
+  error |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
+  error |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &dataSize);
+  assert(error == CL_SUCCESS);
+
+  size_t local;
+  error = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE,
+    sizeof(local), &local, nullptr);
+  assert(error == CL_SUCCESS);
+  //printf("Kernel workgroup size is %i.\n", local);
+
+  begin = clock();
+  size_t global = dataSize;
+  error = clEnqueueNDRangeKernel(commands, kernel, 1, nullptr, &global, &local,
+    0, nullptr, nullptr);
+  assert(error == CL_SUCCESS);
+
+  clFinish(commands);
+  end = clock();
+  //printf("Time spent calculating result is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+  //printf("Global gets set to %i.\n", global);
+
+  begin = clock();
+  error = clEnqueueReadBuffer(commands, output, CL_TRUE, 0,
+    dataSize, data, 0, nullptr, nullptr);
+  assert(error == CL_SUCCESS);
+  end = clock();
+  //printf("Time spent reading buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+
+  return args[1];
+}
+
+napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value result;
+  cl_int error;
+
+  char* svmInput;
+  char* svmOutput;
+
+  clock_t begin;
+  clock_t end;
+
+  size_t argc = 2;
+  napi_value args[2];
+  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  assert(status == napi_ok);
+
+  if (argc < 2) {
+    napi_throw_type_error(env, nullptr, "Wrong number of arguments.");
+    return nullptr;
+  }
+
+  napi_valuetype t;
+  status = napi_typeof(env, args[0], &t);
+  assert(status == napi_ok);
+  if (t != napi_object) {
+    napi_throw_type_error(env, nullptr, "First arugment is an object - kernel details.");
+    return nullptr;
+  }
+
+  bool isBuffer;
+  status = napi_is_buffer(env, args[1], &isBuffer);
+  assert(status == napi_ok);
+  if (!isBuffer) {
+    napi_throw_type_error(env, nullptr, "Second argument is a buffer - the data.");
+    return nullptr;
+  }
+
+  void* data;
+  size_t dataSize;
+  status = napi_get_buffer_info(env, args[1], &data, &dataSize);
+  assert(status == napi_ok);
+
+  // printf("Data size is %i.\n", dataSize);
 
   void* extvalue;
   napi_value jsvalue;
@@ -424,20 +544,29 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
     nullptr, &error);
   assert(error == CL_SUCCESS);
   assert(input != nullptr && output != nullptr); */
-  svmInput = clSVMAlloc(context, CL_MEM_READ_ONLY, dataSize, 0);
+  svmInput = (char *) clSVMAlloc(context, CL_MEM_READ_ONLY, dataSize, 0);
   assert(svmInput != nullptr);
-  svmOutput = clSVMAlloc(context, CL_MEM_WRITE_ONLY, dataSize, 0);
+  svmOutput = (char *) clSVMAlloc(context, CL_MEM_WRITE_ONLY, dataSize, 0);
   assert(svmOutput != nullptr);
   end = clock();
-  printf("Time spent allocating GPU buffers is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+  //printf("Time spent allocating GPU buffers is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
-  begin = clock();
+  //begin = clock();
   /* error = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, dataSize,
     data, 0, nullptr, nullptr); */
-  error = clEnqueueSVMMemcpy(commands, CL_TRUE, svmInput, data, dataSize, 0, 0, 0);
+  error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_WRITE, svmInput, dataSize, 0, 0, 0);
   assert(error == CL_SUCCESS);
+  begin = clock();
+  //error = clEnqueueSVMMemcpy(commands, CL_TRUE, svmInput, data, dataSize, 0, 0, 0);
+  //assert(error == CL_SUCCESS);
+
+  memcpy(svmInput, data, dataSize);
   end = clock();
-  printf("Time spent writing buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+  // assert(error == CL_SUCCESS);
+  error = clEnqueueSVMUnmap(commands, svmInput, 0, 0, 0);
+  assert(error == CL_SUCCESS);
+  // end = clock();
+  //printf("Time spent writing buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
   error = CL_SUCCESS;
   /* error = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
@@ -451,7 +580,7 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
   error = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE,
     sizeof(local), &local, nullptr);
   assert(error == CL_SUCCESS);
-  printf("Kernel workgroup size is %i.\n", local);
+  //printf("Kernel workgroup size is %i.\n", local);
 
   begin = clock();
   size_t global = dataSize;
@@ -461,17 +590,24 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
 
   clFinish(commands);
   end = clock();
-  printf("Time spent calculating result is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
-  printf("Global gets set to %i.\n", global);
+  //printf("Time spent calculating result is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+  //printf("Global gets set to %i.\n", global);
 
   begin = clock();
   /* error = clEnqueueReadBuffer(commands, output, CL_TRUE, 0,
     dataSize, data, 0, nullptr, nullptr); */
-  error = clEnqueueSVMMemcpy(commands, CL_TRUE, data, svmOutput, dataSize, 0, 0, 0);
+  error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_READ, svmOutput, dataSize, 0, 0, 0);
+  assert(error == CL_SUCCESS);
+  memcpy(data, svmOutput, dataSize);
+  //error = clEnqueueSVMMemcpy(commands, CL_TRUE, data, svmOutput, dataSize, 0, 0, 0);
+  // printf("Output error is %i\n", error);
+  error = clEnqueueSVMUnmap(commands, svmOutput, 0, 0, 0);
   assert(error == CL_SUCCESS);
   end = clock();
-  printf("Time spent reading buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+  //printf("Time spent reading buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
+  clSVMFree(context, svmInput);
+  clSVMFree(context, svmOutput);
   return args[1];
 }
 
@@ -481,8 +617,9 @@ napi_value Init(napi_env env, napi_value exports) {
     DECLARE_NAPI_METHOD("getPlatformNames", GetPlatformNames),
     DECLARE_NAPI_METHOD("getDeviceNames", GetDeviceNames),
     DECLARE_NAPI_METHOD("buildAProgram", BuildAProgram),
-    DECLARE_NAPI_METHOD("runProgram", RunProgram) };
-  status = napi_define_properties(env, exports, 4, desc);
+    DECLARE_NAPI_METHOD("runProgram", RunProgram),
+    DECLARE_NAPI_METHOD("runProgramSVM", RunProgramSVM) };
+  status = napi_define_properties(env, exports, 5, desc);
   assert(status == napi_ok);
 
   return exports;

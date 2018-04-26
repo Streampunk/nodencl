@@ -36,8 +36,9 @@ let startTime = process.hrtime();
 let clProgram = addon.buildAProgram(1, 0, kernel);
 console.log("Program completed in", process.hrtime(startTime), "with", clProgram);
 
-for ( let x = 0 ; x < 100 ; x++ ) {
+for ( let x = 0 ; x < 1000 ; x++ ) {
+  let b = new Buffer(65536 * 100);
 startTime = process.hrtime();
-let result = addon.runProgram(clProgram, new Buffer(65536 * 100));
+let result = addon.runProgram(clProgram, b);
 console.log("Program executed in", process.hrtime(startTime), "with", result.length);
 }
