@@ -33,9 +33,11 @@ console.log(addon.getDeviceNames(1));
 
 console.log("Building a program");
 let startTime = process.hrtime();
-let clProgram = addon.buildAProgram(0, 0, kernel);
+let clProgram = addon.buildAProgram(1, 0, kernel);
 console.log("Program completed in", process.hrtime(startTime), "with", clProgram);
 
+for ( let x = 0 ; x < 100 ; x++ ) {
 startTime = process.hrtime();
 let result = addon.runProgram(clProgram, new Buffer(65536 * 100));
 console.log("Program executed in", process.hrtime(startTime), "with", result.length);
+}

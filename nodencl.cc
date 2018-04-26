@@ -29,11 +29,11 @@
 
 std::string GetPlatformName(cl_platform_id id) {
   size_t size = 0;
-  clGetPlatformInfo (id, CL_PLATFORM_NAME, 0, nullptr, &size);
+  clGetPlatformInfo (id, CL_PLATFORM_VERSION, 0, nullptr, &size);
 
   std::string result;
   result.resize(size);
-  clGetPlatformInfo (id, CL_PLATFORM_NAME, size,
+  clGetPlatformInfo (id, CL_PLATFORM_VERSION, size,
   	const_cast<char*> (result.data()), nullptr);
 
   return result;
@@ -47,6 +47,10 @@ std::string GetDeviceName(cl_device_id id) {
   result.resize(size);
   clGetDeviceInfo (id, CL_DEVICE_NAME, size,
   	const_cast<char*> (result.data()), nullptr);
+  cl_device_svm_capabilities caps;
+  cl_int err = clGetDeviceInfo(id, CL_DEVICE_SVM_CAPABILITIES,
+    sizeof(cl_device_svm_capabilities), &caps, 0);
+  printf("Device caps %i = %i. Bitfield = %i\n", id, err, caps);
 
   return result;
 }
@@ -346,6 +350,8 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
 
   cl_mem input;
   cl_mem output;
+  void* svmInput;
+  void* svmOutput;
 
   clock_t begin;
   clock_t end;
@@ -411,26 +417,33 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
   assert(device_id != nullptr && status == napi_ok);
 
   begin = clock();
-  input = clCreateBuffer(context, CL_MEM_READ_ONLY, dataSize,
+  /* input = clCreateBuffer(context, CL_MEM_READ_ONLY, dataSize,
     nullptr, &error);
   assert(error == CL_SUCCESS);
   output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, dataSize,
     nullptr, &error);
   assert(error == CL_SUCCESS);
-  assert(input != nullptr && output != nullptr);
+  assert(input != nullptr && output != nullptr); */
+  svmInput = clSVMAlloc(context, CL_MEM_READ_ONLY, dataSize, 0);
+  assert(svmInput != nullptr);
+  svmOutput = clSVMAlloc(context, CL_MEM_WRITE_ONLY, dataSize, 0);
+  assert(svmOutput != nullptr);
   end = clock();
   printf("Time spent allocating GPU buffers is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
   begin = clock();
-  error = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, dataSize,
-    data, 0, nullptr, nullptr);
+  /* error = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, dataSize,
+    data, 0, nullptr, nullptr); */
+  error = clEnqueueSVMMemcpy(commands, CL_TRUE, svmInput, data, dataSize, 0, 0, 0);
   assert(error == CL_SUCCESS);
   end = clock();
   printf("Time spent writing buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
   error = CL_SUCCESS;
-  error = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
-  error |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
+  /* error = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
+  error |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output); */
+  error = clSetKernelArgSVMPointer(kernel, 0, svmInput);
+  error = clSetKernelArgSVMPointer(kernel, 1, svmOutput);
   error |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &dataSize);
   assert(error == CL_SUCCESS);
 
@@ -445,15 +458,16 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
   error = clEnqueueNDRangeKernel(commands, kernel, 1, nullptr, &global, &local,
     0, nullptr, nullptr);
   assert(error == CL_SUCCESS);
-  end = clock();
-  printf("Time spent calculating result is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
   clFinish(commands);
+  end = clock();
+  printf("Time spent calculating result is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
   printf("Global gets set to %i.\n", global);
 
   begin = clock();
-  error = clEnqueueReadBuffer(commands, output, CL_TRUE, 0,
-    dataSize, data, 0, nullptr, nullptr);
+  /* error = clEnqueueReadBuffer(commands, output, CL_TRUE, 0,
+    dataSize, data, 0, nullptr, nullptr); */
+  error = clEnqueueSVMMemcpy(commands, CL_TRUE, data, svmOutput, dataSize, 0, 0, 0);
   assert(error == CL_SUCCESS);
   end = clock();
   printf("Time spent reading buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
