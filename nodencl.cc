@@ -25,6 +25,7 @@
 #include <fstream>
 #include <math.h>
 #include <time.h>
+#include <chrono>
 #include "node_api.h"
 
 std::string GetPlatformName(cl_platform_id id) {
@@ -465,6 +466,11 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
   return args[1];
 }
 
+long long microTime(std::chrono::high_resolution_clock::time_point start) {
+  auto elapsed = std::chrono::high_resolution_clock::now() - start;
+  return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+}
+
 napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   napi_status status;
   napi_value result;
@@ -473,8 +479,7 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   char* svmInput;
   char* svmOutput;
 
-  clock_t begin;
-  clock_t end;
+  std::chrono::high_resolution_clock::time_point start;
 
   size_t argc = 2;
   napi_value args[2];
@@ -536,7 +541,7 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   cl_device_id device_id = (cl_device_id) extvalue;
   assert(device_id != nullptr && status == napi_ok);
 
-  begin = clock();
+  start = std::chrono::high_resolution_clock::now();
   /* input = clCreateBuffer(context, CL_MEM_READ_ONLY, dataSize,
     nullptr, &error);
   assert(error == CL_SUCCESS);
@@ -548,24 +553,23 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   assert(svmInput != nullptr);
   svmOutput = (char *) clSVMAlloc(context, CL_MEM_WRITE_ONLY, dataSize, 0);
   assert(svmOutput != nullptr);
-  end = clock();
-  //printf("Time spent allocating GPU buffers is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
+  long long createBufMS = microTime(start);
+  //printf("Time spent allocating GPU buffers is %lld.\n", microseconds);
 
-  //begin = clock();
+  start = std::chrono::high_resolution_clock::now();
   /* error = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, dataSize,
     data, 0, nullptr, nullptr); */
   error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_WRITE, svmInput, dataSize, 0, 0, 0);
   assert(error == CL_SUCCESS);
-  begin = clock();
-  //error = clEnqueueSVMMemcpy(commands, CL_TRUE, svmInput, data, dataSize, 0, 0, 0);
-  //assert(error == CL_SUCCESS);
+  // error = clEnqueueSVMMemcpy(commands, CL_TRUE, svmInput, data, dataSize, 0, 0, 0);
+  // assert(error == CL_SUCCESS);
 
   memcpy(svmInput, data, dataSize);
-  end = clock();
   // assert(error == CL_SUCCESS);
   error = clEnqueueSVMUnmap(commands, svmInput, 0, 0, 0);
   assert(error == CL_SUCCESS);
   // end = clock();
+  long long writeBufMS = microTime(start);
   //printf("Time spent writing buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
   error = CL_SUCCESS;
@@ -582,32 +586,36 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   assert(error == CL_SUCCESS);
   //printf("Kernel workgroup size is %i.\n", local);
 
-  begin = clock();
+  start = std::chrono::high_resolution_clock::now();
   size_t global = dataSize;
   error = clEnqueueNDRangeKernel(commands, kernel, 1, nullptr, &global, &local,
     0, nullptr, nullptr);
   assert(error == CL_SUCCESS);
 
   clFinish(commands);
-  end = clock();
+  long long kernelMS = microTime(start);
   //printf("Time spent calculating result is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
   //printf("Global gets set to %i.\n", global);
 
-  begin = clock();
+  start = std::chrono::high_resolution_clock::now();
   /* error = clEnqueueReadBuffer(commands, output, CL_TRUE, 0,
     dataSize, data, 0, nullptr, nullptr); */
   error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_READ, svmOutput, dataSize, 0, 0, 0);
   assert(error == CL_SUCCESS);
   memcpy(data, svmOutput, dataSize);
   //error = clEnqueueSVMMemcpy(commands, CL_TRUE, data, svmOutput, dataSize, 0, 0, 0);
-  // printf("Output error is %i\n", error);
+  //printf("Output error is %i\n", error);
   error = clEnqueueSVMUnmap(commands, svmOutput, 0, 0, 0);
   assert(error == CL_SUCCESS);
-  end = clock();
+  long long readBufMS = microTime(start);
   //printf("Time spent reading buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
+  start = std::chrono::high_resolution_clock::now();
   clSVMFree(context, svmInput);
   clSVMFree(context, svmOutput);
+  long long freeMS = microTime(start);
+  printf("create = %lld, write = %lld, kernel = %lld, read = %lld, free = %lld, total = %lld\n",
+    createBufMS, writeBufMS, kernelMS, readBufMS, freeMS, createBufMS + writeBufMS + kernelMS + readBufMS + freeMS);
   return args[1];
 }
 
