@@ -24,7 +24,7 @@ const kernel = `__kernel void square(
 
     int i = get_global_id(0);
     if (i < count)
-        output[i] = input[i] * input[i];
+        output[i] = input[i] + 1;
 }`;
 
 console.log(addon.getPlatformNames());
@@ -36,9 +36,10 @@ let startTime = process.hrtime();
 let clProgram = addon.buildAProgram(1, 0, kernel);
 console.log("Program completed in", process.hrtime(startTime), "with", clProgram);
 
-let b = new Buffer(65536 * 400);
+let b = addon.createSVMBuffer(clProgram, 65536 * 100);
+b[0] = 2;
 for ( let x = 0 ; x < 1000 ; x++ ) {
 startTime = process.hrtime();
 let result = addon.runProgramSVM(clProgram, b);
-console.log("Program executed in", process.hrtime(startTime), "with", result.length);
+console.log("Program executed in", process.hrtime(startTime), "with", result.length, "value", b[0]);
 }

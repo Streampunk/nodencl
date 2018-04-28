@@ -48,10 +48,6 @@ std::string GetDeviceName(cl_device_id id) {
   result.resize(size);
   clGetDeviceInfo (id, CL_DEVICE_NAME, size,
   	const_cast<char*> (result.data()), nullptr);
-  cl_device_svm_capabilities caps;
-  cl_int err = clGetDeviceInfo(id, CL_DEVICE_SVM_CAPABILITIES,
-    sizeof(cl_device_svm_capabilities), &caps, 0);
-  printf("Device caps %i = %i. Bitfield = %i\n", id, err, caps);
 
   return result;
 }
@@ -165,28 +161,28 @@ napi_value GetDeviceNames(napi_env env, napi_callback_info info) {
 void tidyQueue(napi_env env, void* data, void* hint) {
   printf("Queue finalizer called.\n");
   cl_int error = CL_SUCCESS;
-  error = clReleaseCommandQueue(*(cl_command_queue *) data);
+  error = clReleaseCommandQueue((cl_command_queue) data);
   assert(error == CL_SUCCESS);
 }
 
 void tidyContext(napi_env env, void* data, void* hint) {
   printf("Context finalizer called.\n");
   cl_int error = CL_SUCCESS;
-  error = clReleaseContext(*(cl_context*) data);
+  error = clReleaseContext((cl_context) data);
   assert(error == CL_SUCCESS);
 }
 
 void tidyProgram(napi_env env, void* data, void* hint) {
   printf("Program finalizer called.\n");
   cl_int error = CL_SUCCESS;
-  error = clReleaseProgram(*(cl_program *) data);
+  error = clReleaseProgram((cl_program) data);
   assert(error == CL_SUCCESS);
 }
 
 void tidyKernel(napi_env env, void* data, void* hint) {
   printf("Kernel finalizer called.\n");
   cl_int error = CL_SUCCESS;
-  error = clReleaseKernel(*(cl_kernel *) data);
+  error = clReleaseKernel((cl_kernel) data);
   assert(error == CL_SUCCESS);
 }
 
@@ -259,6 +255,12 @@ napi_value BuildAProgram(napi_env env, napi_callback_info info) {
   std::vector<cl_device_id> deviceIds = getDeviceIds(platformIndex);
   device_id = deviceIds[deviceIndex];
 
+  cl_device_svm_capabilities caps;
+  error = clGetDeviceInfo(device_id, CL_DEVICE_SVM_CAPABILITIES,
+    sizeof(cl_device_svm_capabilities), &caps, 0);
+  printf("Device caps %i = %i. Bitfield = %i\n", device_id, error, caps);
+  assert(error == CL_SUCCESS);
+
   size_t kernelSize = 0;
   status = napi_get_value_string_utf8(env, args[2], nullptr, 0, &kernelSize);
   assert(status == napi_ok);
@@ -324,9 +326,15 @@ napi_value BuildAProgram(napi_env env, napi_callback_info info) {
   status = napi_create_object(env, &result);
   assert(status == napi_ok);
 
+  napi_value jsCaps;
+  status = napi_create_int32(env, caps, &jsCaps);
+  assert(status == napi_ok);
+
   status = napi_set_named_property(env, result, "platformIndex", args[0]);
   assert(status == napi_ok);
   status = napi_set_named_property(env, result, "deviceIndex", args[1]);
+  assert(status == napi_ok);
+  status = napi_set_named_property(env, result, "svmCaps", jsCaps);
   assert(status == napi_ok);
   status = napi_set_named_property(env, result, "deviceId", jsdeviceid);
   assert(status == napi_ok);
@@ -549,7 +557,7 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
     nullptr, &error);
   assert(error == CL_SUCCESS);
   assert(input != nullptr && output != nullptr); */
-  svmInput = (char *) clSVMAlloc(context, CL_MEM_READ_ONLY, dataSize, 0);
+  svmInput = (char *) data; //clSVMAlloc(context, CL_MEM_READ_ONLY, dataSize, 0);
   assert(svmInput != nullptr);
   svmOutput = (char *) clSVMAlloc(context, CL_MEM_WRITE_ONLY, dataSize, 0);
   assert(svmOutput != nullptr);
@@ -559,12 +567,12 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   start = std::chrono::high_resolution_clock::now();
   /* error = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, dataSize,
     data, 0, nullptr, nullptr); */
-  error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_WRITE, svmInput, dataSize, 0, 0, 0);
-  assert(error == CL_SUCCESS);
+  //error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_WRITE, svmInput, dataSize, 0, 0, 0);
+  //assert(error == CL_SUCCESS);
   // error = clEnqueueSVMMemcpy(commands, CL_TRUE, svmInput, data, dataSize, 0, 0, 0);
   // assert(error == CL_SUCCESS);
 
-  memcpy(svmInput, data, dataSize);
+  // memcpy(svmInput, data, dataSize);
   // assert(error == CL_SUCCESS);
   error = clEnqueueSVMUnmap(commands, svmInput, 0, 0, 0);
   assert(error == CL_SUCCESS);
@@ -602,6 +610,8 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
     dataSize, data, 0, nullptr, nullptr); */
   error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_READ, svmOutput, dataSize, 0, 0, 0);
   assert(error == CL_SUCCESS);
+  error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_WRITE, svmInput, dataSize, 0, 0, 0);
+  assert(error == CL_SUCCESS);
   memcpy(data, svmOutput, dataSize);
   //error = clEnqueueSVMMemcpy(commands, CL_TRUE, data, svmOutput, dataSize, 0, 0, 0);
   //printf("Output error is %i\n", error);
@@ -611,12 +621,78 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   //printf("Time spent reading buffer is %lf.\n", (double)(end - begin)/CLOCKS_PER_SEC);
 
   start = std::chrono::high_resolution_clock::now();
-  clSVMFree(context, svmInput);
+  // clSVMFree(context, svmInput);
   clSVMFree(context, svmOutput);
   long long freeMS = microTime(start);
   printf("create = %lld, write = %lld, kernel = %lld, read = %lld, free = %lld, total = %lld\n",
     createBufMS, writeBufMS, kernelMS, readBufMS, freeMS, createBufMS + writeBufMS + kernelMS + readBufMS + freeMS);
   return args[1];
+}
+
+void finalizeSVM(napi_env env, void* data, void* hint) {
+  cl_context context = (cl_context) hint;
+  printf("Finalizing a SVM buffer.\n");
+  clSVMFree(context, data);
+}
+
+napi_value CreateSVMBuffer(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value result;
+  cl_int error;
+
+  size_t argc = 2;
+  napi_value args[2];
+  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  assert(status == napi_ok);
+
+  if (argc < 2) {
+    napi_throw_type_error(env, nullptr, "Wrong number of arguments.");
+    return nullptr;
+  }
+
+  napi_valuetype t;
+  status = napi_typeof(env, args[0], &t);
+  assert(status == napi_ok);
+  if (t != napi_object) {
+    napi_throw_type_error(env, nullptr, "First arugment is an object - kernel details.");
+    return nullptr;
+  }
+
+  status = napi_typeof(env, args[1], &t);
+  assert(status == napi_ok);
+  if (t != napi_number) {
+    napi_throw_type_error(env, nullptr, "Second argument is a number - the buffer size.");
+    return nullptr;
+  }
+
+  void* extvalue;
+  napi_value jsvalue;
+  status = napi_get_named_property(env, args[0], "context", &jsvalue);
+  assert(jsvalue != nullptr && status == napi_ok);
+  status = napi_get_value_external(env, jsvalue, &extvalue);
+  cl_context context = (cl_context) extvalue;
+  assert(context != nullptr);
+  assert(status == napi_ok);
+
+  status = napi_get_named_property(env, args[0], "commands", &jsvalue);
+  assert(status == napi_ok);
+  status = napi_get_value_external(env, jsvalue, &extvalue);
+  cl_command_queue commands = (cl_command_queue) extvalue;
+  assert(commands != nullptr && status == napi_ok);
+
+  int32_t dataSize;
+  status = napi_get_value_int32(env, args[1], &dataSize);
+  assert(status == napi_ok);
+
+  void* data = clSVMAlloc(context, CL_MEM_READ_ONLY, dataSize, 0);
+  assert(data != nullptr);
+
+  status = napi_create_external_buffer(env, dataSize, data, &finalizeSVM, context, &result);
+  assert(status == napi_ok);
+
+  error = clEnqueueSVMMap(commands, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, data, dataSize, 0, 0, 0);
+  assert(error == CL_SUCCESS);
+  return result;
 }
 
 napi_value Init(napi_env env, napi_value exports) {
@@ -626,8 +702,9 @@ napi_value Init(napi_env env, napi_value exports) {
     DECLARE_NAPI_METHOD("getDeviceNames", GetDeviceNames),
     DECLARE_NAPI_METHOD("buildAProgram", BuildAProgram),
     DECLARE_NAPI_METHOD("runProgram", RunProgram),
-    DECLARE_NAPI_METHOD("runProgramSVM", RunProgramSVM) };
-  status = napi_define_properties(env, exports, 5, desc);
+    DECLARE_NAPI_METHOD("runProgramSVM", RunProgramSVM),
+    DECLARE_NAPI_METHOD("createSVMBuffer", CreateSVMBuffer) };
+  status = napi_define_properties(env, exports, 6, desc);
   assert(status == napi_ok);
 
   return exports;
