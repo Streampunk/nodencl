@@ -25,51 +25,60 @@
 #include <fstream>
 #include <math.h>
 #include <time.h>
-#include <chrono>
+#include "noden_util.h"
 #include "node_api.h"
 
-std::string GetPlatformName(cl_platform_id id) {
+cl_int GetPlatformName(cl_platform_id id, std::string* result) {
   size_t size = 0;
-  clGetPlatformInfo (id, CL_PLATFORM_VERSION, 0, nullptr, &size);
+  cl_int error;
+  error = clGetPlatformInfo(id, CL_PLATFORM_VERSION, 0, nullptr, &size);
+  PASS_CL_ERROR;
 
-  std::string result;
-  result.resize(size);
-  clGetPlatformInfo (id, CL_PLATFORM_VERSION, size,
-  	const_cast<char*> (result.data()), nullptr);
+  result->resize(size);
+  error = clGetPlatformInfo (id, CL_PLATFORM_VERSION, size,
+  	const_cast<char*> (result->data()), nullptr);
+  PASS_CL_ERROR;
 
-  return result;
+  return CL_SUCCESS;
 }
 
-std::string GetDeviceName(cl_device_id id) {
+cl_int GetDeviceName(cl_device_id id, std::string* result) {
   size_t size = 0;
-  clGetDeviceInfo (id, CL_DEVICE_NAME, 0, nullptr, &size);
+  cl_int error;
+  error = clGetDeviceInfo (id, CL_DEVICE_NAME, 0, nullptr, &size);
+  PASS_CL_ERROR;
 
-  std::string result;
-  result.resize(size);
-  clGetDeviceInfo (id, CL_DEVICE_NAME, size,
-  	const_cast<char*> (result.data()), nullptr);
+  result->resize(size);
+  error = clGetDeviceInfo (id, CL_DEVICE_NAME, size,
+  	const_cast<char*> (result->data()), nullptr);
+  PASS_CL_ERROR;
 
-  return result;
+  return CL_SUCCESS;
 }
 
-std::string LoadKernel (const char* name) {
-  std::ifstream in (name);
-  std::string result (
-   (std::istreambuf_iterator<char> (in)),
-    std::istreambuf_iterator<char> ());
-  return result;
-}
+cl_int GetDeviceType(cl_device_id id, std::string* result) {
+  cl_device_type deviceType;
+  cl_int error;
+  error = clGetDeviceInfo(id, CL_DEVICE_TYPE, sizeof(cl_device_type), &deviceType, nullptr);
+  PASS_CL_ERROR;
 
-cl_program CreateProgram (const std::string& source,
- 	cl_context context) {
-  size_t lengths [1] = { source.size () };
-  const char* sources [1] = { source.data () };
-
-  cl_int error = 0;
-  cl_program program = clCreateProgramWithSource (context, 1, sources, lengths, &error);
-  assert(error == CL_SUCCESS);
-
-  return program;
+  char* typeName;
+  switch (deviceType) {
+  case CL_DEVICE_TYPE_CPU:
+    typeName = "CPU";
+    break;
+  case CL_DEVICE_TYPE_GPU:
+    typeName = "GPU";
+    break;
+  case CL_DEVICE_TYPE_ACCELERATOR:
+    typeName = "ACCELERATOR";
+    break;
+  default:
+    typeName = "DEFAULT";
+    break;
+  }
+  result->assign(typeName);
+  return CL_SUCCESS;
 }
 
 std::vector<cl_platform_id> getPlatformIds() {
@@ -98,19 +107,22 @@ std::vector<cl_device_id> getDeviceIds(cl_uint platformId) {
 napi_value GetPlatformNames(napi_env env, napi_callback_info info) {
   napi_value result;
   napi_status status;
+  cl_int error;
 
   std::vector<cl_platform_id> platformIds = getPlatformIds();
 
   status = napi_create_array_with_length(env, platformIds.size(), &result);
-  assert(status == napi_ok);
+  CHECK_STATUS;
 
   for ( uint32_t x = 0 ; x < platformIds.size() ; x++ ) {
     napi_value element;
-    std::string platName = GetPlatformName(platformIds[x]);
+    std::string platName;
+    error = GetPlatformName(platformIds[x], &platName);
+    CHECK_CL_ERROR;
     status = napi_create_string_utf8(env, platName.data(), platName.size() - 1, &element);
-    assert(status == napi_ok);
+    CHECK_STATUS;
     status = napi_set_element(env, result, x, element);
-    assert(status == napi_ok);
+    CHECK_STATUS;
   }
   return result;
 }
@@ -118,11 +130,12 @@ napi_value GetPlatformNames(napi_env env, napi_callback_info info) {
 napi_value GetDeviceNames(napi_env env, napi_callback_info info) {
   napi_status status;
   napi_value result;
+  cl_int error;
 
   size_t argc = 1;
   napi_value args[1];
   status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  assert(status == napi_ok);
+  CHECK_STATUS;
 
   if (argc < 1) {
     napi_throw_type_error(env, nullptr, "Wrong number of arguments.");
@@ -131,7 +144,7 @@ napi_value GetDeviceNames(napi_env env, napi_callback_info info) {
 
   napi_valuetype t;
   status = napi_typeof(env, args[0], &t);
-  assert(status == napi_ok);
+  CHECK_STATUS;
   if (t != napi_number) {
     napi_throw_type_error(env, nullptr, "First arugment is a number - the platform ID.");
     return nullptr;
@@ -139,20 +152,68 @@ napi_value GetDeviceNames(napi_env env, napi_callback_info info) {
 
   int32_t platformId = 0;
   status = napi_get_value_int32(env, args[0], &platformId);
-  assert(status == napi_ok);
+  CHECK_STATUS;
 
   std::vector<cl_device_id> deviceIds = getDeviceIds((cl_uint) platformId);
 
   status = napi_create_array_with_length(env, deviceIds.size(), &result);
-  assert(status == napi_ok);
+  CHECK_STATUS;
 
   for ( uint32_t x = 0 ; x < deviceIds.size() ; x++ ) {
     napi_value element;
-    std::string deviceName = GetDeviceName(deviceIds[x]);
+    std::string deviceName;
+    error = GetDeviceName(deviceIds[x], &deviceName);
+    CHECK_CL_ERROR;
     status = napi_create_string_utf8(env, deviceName.data(), deviceName.size() - 1, &element);
-    assert(status == napi_ok);
+    CHECK_STATUS;
     status = napi_set_element(env, result, x, element);
-    assert(status == napi_ok);
+    CHECK_STATUS;
+  }
+
+  return result;
+}
+
+napi_value GetDeviceTypes(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value result;
+  cl_int error;
+
+  size_t argc = 1;
+  napi_value args[1];
+  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  CHECK_STATUS;
+
+  if (argc < 1) {
+    napi_throw_type_error(env, nullptr, "Wrong number of arguments.");
+    return nullptr;
+  }
+
+  napi_valuetype t;
+  status = napi_typeof(env, args[0], &t);
+  CHECK_STATUS;
+  if (t != napi_number) {
+    napi_throw_type_error(env, nullptr, "First arugment is a number - the platform ID.");
+    return nullptr;
+  }
+
+  int32_t platformId = 0;
+  status = napi_get_value_int32(env, args[0], &platformId);
+  CHECK_STATUS;
+
+  std::vector<cl_device_id> deviceIds = getDeviceIds((cl_uint) platformId);
+
+  status = napi_create_array_with_length(env, deviceIds.size(), &result);
+  CHECK_STATUS;
+
+  for ( uint32_t x = 0 ; x < deviceIds.size() ; x++ ) {
+    napi_value element;
+    std::string deviceType;
+    error = GetDeviceType(deviceIds[x], &deviceType);
+    CHECK_CL_ERROR;
+    status = napi_create_string_utf8(env, deviceType.data(), deviceType.size(), &element);
+    CHECK_STATUS;
+    status = napi_set_element(env, result, x, element);
+    CHECK_STATUS;
   }
 
   return result;
@@ -185,6 +246,98 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   error = clReleaseKernel((cl_kernel) data);
   assert(error == CL_SUCCESS);
 }
+
+/* typedef struct {
+  char* kernelSource;
+  size_t kernelSize;
+  int32_t platformIndex;
+  int32_t deviceIndex;
+  cl_device_id device_id;             // compute device id
+  cl_context context;                 // compute context
+  cl_command_queue commands;          // compute command queue
+  cl_program program;                 // compute program
+  cl_kernel kernel;                   // compute kernel
+  napi_deferred _deferred;
+  napi_async_work _request;
+} buildCarrier;
+
+void BuildExecute(napi_env env, void* data) {
+  buildCarrier* c = status_cast<buildCarrier*> data;
+}
+
+void BuildComplete(napi_env env, napi_status status, void* data) {
+  buildCarrier* c = status_cast<buildCarrier*> data;
+
+}
+
+napi_value BuildAProgram(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value promise;
+  napi_value resource_name;
+  buildCarrier carrier;
+
+
+  size_t argc = 3;
+  napi_value args[3];
+  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  assert(status == napi_ok);
+
+  if (argc < 3) {
+    napi_throw_type_error(env, nullptr, "Wrong number of arguments.");
+    return nullptr;
+  }
+
+  napi_valuetype t;
+  status = napi_typeof(env, args[0], &t);
+  assert(status == napi_ok);
+  if (t != napi_number) {
+    napi_throw_type_error(env, nullptr, "First arugment is a number - the platform ID.");
+    return nullptr;
+  }
+
+  status = napi_typeof(env, args[1], &t);
+  assert(status == napi_ok);
+  if (t != napi_number) {
+    napi_throw_type_error(env, nullptr, "Second argument is a number - the Device ID.");
+    return nullptr;
+  }
+
+  status = napi_typeof(env, args[2], &t);
+  assert(status == napi_ok);
+  if (t != napi_string) {
+    napi_throw_type_error(env, nullptr, "Third argument is a string - the kernel.");
+    return nullptr;
+  }
+
+  status = napi_get_value_int32(env, args[0], &carrier.platformIndex);
+  assert(status == napi_ok);
+
+  status = napi_get_value_int32(env, args[1], &carrier.deviceIndex);
+  assert(status == napi_ok);
+  std::vector<cl_device_id> deviceIds = getDeviceIds(carrier.platformIndex);
+  carrier.device_id = deviceIds[carrier.deviceIndex];
+
+  status = napi_get_value_string_utf8(env, args[2], nullptr, 0, &carrier.kernelSize);
+  assert(status == napi_ok);
+  carrier.kernelSource = (char *) malloc(sizeof(char) * (carrier.kernelSize + 1));
+  carrier.kernelSource[carrier.kernelSize] = '\0';
+  status = napi_get_value_string_utf8(env, args[2], carrier.kernelSource,
+    carrier.kernelSize + 1, &carrier.kernelSize);
+  assert(status == napi_ok);
+
+  status = napi_create_promise(env, &carrier._deferred, &promise);
+  assert(status == napi_ok);
+
+  status = napi_create_string_utf8(env, "BuildProgram", NAPI_AUTO_LENGTH, &resource_name);
+  assert(status == napi_ok);
+  status = napi_create_async_work(env, NULL, resource_name, BuildExecute,
+    BuildComplete, &carrier, &carrier._request);
+  assert(status == napi_ok);
+  status = napi_queue_async_work(env, carrier._request);
+  assert(status == napi_ok);
+
+  return promise;
+} */
 
 napi_value BuildAProgram(napi_env env, napi_callback_info info) {
   napi_status status;
@@ -474,11 +627,6 @@ napi_value RunProgram(napi_env env, napi_callback_info info) {
   return args[1];
 }
 
-long long microTime(std::chrono::high_resolution_clock::time_point start) {
-  auto elapsed = std::chrono::high_resolution_clock::now() - start;
-  return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
-}
-
 napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   napi_status status;
   napi_value result;
@@ -487,7 +635,7 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   char* svmInput;
   char* svmOutput;
 
-  std::chrono::high_resolution_clock::time_point start;
+  HR_TIME_POINT start;
 
   size_t argc = 2;
   napi_value args[2];
@@ -629,6 +777,8 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   return args[1];
 }
 
+#define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
+
 void finalizeSVM(napi_env env, void* data, void* hint) {
   cl_context context = (cl_context) hint;
   printf("Finalizing a SVM buffer.\n");
@@ -703,8 +853,10 @@ napi_value Init(napi_env env, napi_value exports) {
     DECLARE_NAPI_METHOD("buildAProgram", BuildAProgram),
     DECLARE_NAPI_METHOD("runProgram", RunProgram),
     DECLARE_NAPI_METHOD("runProgramSVM", RunProgramSVM),
-    DECLARE_NAPI_METHOD("createSVMBuffer", CreateSVMBuffer) };
-  status = napi_define_properties(env, exports, 6, desc);
+    DECLARE_NAPI_METHOD("createSVMBuffer", CreateSVMBuffer),
+    DECLARE_NAPI_METHOD("getDeviceTypes", GetDeviceTypes)
+   };
+  status = napi_define_properties(env, exports, 7, desc);
   assert(status == napi_ok);
 
   return exports;

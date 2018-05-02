@@ -2,7 +2,7 @@
   "targets": [
     {
       "target_name": "nodencl",
-      "sources": [ "nodencl.cc" ],
+      "sources": [ "src/nodencl.cc", "src/noden_util.cc" ],
       "include_dirs": [ "include" ],
       "link_settings": {
         "libraries": [ "OpenCL.lib" ],
