@@ -26,6 +26,7 @@
 #include <math.h>
 #include <time.h>
 #include "noden_util.h"
+#include "noden_info.h"
 #include "node_api.h"
 
 cl_int GetPlatformName(cl_platform_id id, std::string* result) {
@@ -81,7 +82,7 @@ cl_int GetDeviceType(cl_device_id id, std::string* result) {
   return CL_SUCCESS;
 }
 
-std::vector<cl_platform_id> getPlatformIds() {
+/* std::vector<cl_platform_id> getPlatformIds() {
   cl_uint platformIdCount = 0;
   clGetPlatformIDs(0, nullptr, &platformIdCount);
 
@@ -89,10 +90,12 @@ std::vector<cl_platform_id> getPlatformIds() {
   clGetPlatformIDs(platformIdCount, platformIds.data(), nullptr);
 
   return platformIds;
-}
+} */
 
-std::vector<cl_device_id> getDeviceIds(cl_uint platformId) {
-  std::vector<cl_platform_id> platformIds = getPlatformIds();
+/* std::vector<cl_device_id> getDeviceIds(cl_uint platformId) {
+  cl_int error;
+  std::vector<cl_platform_id> platformIds;
+  error = getPlatformIds(platformIds);
 
   cl_uint deviceIdCount = 0;
   clGetDeviceIDs (platformIds[platformId], CL_DEVICE_TYPE_ALL, 0, nullptr,
@@ -102,14 +105,15 @@ std::vector<cl_device_id> getDeviceIds(cl_uint platformId) {
     deviceIds.data(), nullptr);
 
   return deviceIds;
-}
+} */
 
 napi_value GetPlatformNames(napi_env env, napi_callback_info info) {
   napi_value result;
   napi_status status;
   cl_int error;
 
-  std::vector<cl_platform_id> platformIds = getPlatformIds();
+  std::vector<cl_platform_id> platformIds;
+  error = getPlatformIds(platformIds);
 
   status = napi_create_array_with_length(env, platformIds.size(), &result);
   CHECK_STATUS;
@@ -154,7 +158,9 @@ napi_value GetDeviceNames(napi_env env, napi_callback_info info) {
   status = napi_get_value_int32(env, args[0], &platformId);
   CHECK_STATUS;
 
-  std::vector<cl_device_id> deviceIds = getDeviceIds((cl_uint) platformId);
+  std::vector<cl_device_id> deviceIds;
+  error = getDeviceIds((cl_uint) platformId, deviceIds);
+  CHECK_CL_ERROR;
 
   status = napi_create_array_with_length(env, deviceIds.size(), &result);
   CHECK_STATUS;
@@ -200,7 +206,9 @@ napi_value GetDeviceTypes(napi_env env, napi_callback_info info) {
   status = napi_get_value_int32(env, args[0], &platformId);
   CHECK_STATUS;
 
-  std::vector<cl_device_id> deviceIds = getDeviceIds((cl_uint) platformId);
+  std::vector<cl_device_id> deviceIds;
+  error = getDeviceIds((cl_uint) platformId, deviceIds);
+  CHECK_CL_ERROR;
 
   status = napi_create_array_with_length(env, deviceIds.size(), &result);
   CHECK_STATUS;
@@ -405,7 +413,10 @@ napi_value BuildAProgram(napi_env env, napi_callback_info info) {
   int32_t deviceIndex = 0;
   status = napi_get_value_int32(env, args[1], &deviceIndex);
   assert(status == napi_ok);
-  std::vector<cl_device_id> deviceIds = getDeviceIds(platformIndex);
+
+  std::vector<cl_device_id> deviceIds;
+  error = getDeviceIds(platformIndex, deviceIds);
+  CHECK_CL_ERROR;
   device_id = deviceIds[deviceIndex];
 
   cl_device_svm_capabilities caps;
@@ -502,8 +513,6 @@ napi_value BuildAProgram(napi_env env, napi_callback_info info) {
 
   return result;
 }
-
-#define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
 
 napi_value RunProgram(napi_env env, napi_callback_info info) {
   napi_status status;
@@ -777,8 +786,6 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   return args[1];
 }
 
-#define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
-
 void finalizeSVM(napi_env env, void* data, void* hint) {
   cl_context context = (cl_context) hint;
   printf("Finalizing a SVM buffer.\n");
@@ -854,9 +861,10 @@ napi_value Init(napi_env env, napi_value exports) {
     DECLARE_NAPI_METHOD("runProgram", RunProgram),
     DECLARE_NAPI_METHOD("runProgramSVM", RunProgramSVM),
     DECLARE_NAPI_METHOD("createSVMBuffer", CreateSVMBuffer),
-    DECLARE_NAPI_METHOD("getDeviceTypes", GetDeviceTypes)
+    DECLARE_NAPI_METHOD("getDeviceTypes", GetDeviceTypes),
+    DECLARE_NAPI_METHOD("getPlatformInfo", getPlatformInfo)
    };
-  status = napi_define_properties(env, exports, 7, desc);
+  status = napi_define_properties(env, exports, 8, desc);
   assert(status == napi_ok);
 
   return exports;

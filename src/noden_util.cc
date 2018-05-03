@@ -136,3 +136,51 @@ long long microTime(std::chrono::high_resolution_clock::time_point start) {
   auto elapsed = std::chrono::high_resolution_clock::now() - start;
   return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
 }
+
+const char* getNapiTypeName(napi_valuetype t) {
+  switch (t) {
+    case napi_undefined: return "undefined";
+    case napi_null: return "null";
+    case napi_boolean: return "boolean";
+    case napi_number: return "number";
+    case napi_string: return "string";
+    case napi_symbol: return "symbol";
+    case napi_object: return "object";
+    case napi_function: return "function";
+    case napi_external: return "external";
+    default: return "unknown";
+  }
+}
+
+napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
+  napi_value* args, size_t argc, napi_valuetype* types) {
+
+  napi_status status;
+
+  size_t realArgc = argc;
+  status = napi_get_cb_info(env, info, &realArgc, args, nullptr, nullptr);
+  if (status != napi_ok) return status;
+
+  if (realArgc != argc) {
+    char errorMsg[100];
+    sprintf(errorMsg, "For method %s, expected %zi arguments and got %zi.",
+      methodName, argc, realArgc);
+    napi_throw_error(env, nullptr, errorMsg);
+    return napi_pending_exception;
+  }
+
+  napi_valuetype t;
+  for ( int x = 0 ; x < argc ; x++ ) {
+    status = napi_typeof(env, args[x], &t);
+    if (status != napi_ok) return status;
+    if (t != types[x]) {
+      char errorMsg[100];
+      sprintf(errorMsg, "For method %s argument %i, expected type %s and got %s.",
+        methodName, x + 1, getNapiTypeName(types[x]), getNapiTypeName(t));
+      napi_throw_error(env, nullptr, errorMsg);
+      return napi_pending_exception;
+    }
+  }
+
+  return napi_ok;
+};
