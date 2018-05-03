@@ -20,6 +20,7 @@
 #endif
 #include <vector>
 #include "noden_util.h"
+#include "noden_info.h"
 
 cl_int getPlatformIds(std::vector<cl_platform_id> &ids) {
   cl_int error;
@@ -74,7 +75,7 @@ napi_status getPlatformParam(napi_env env, cl_platform_id platformId,
   return status;
 }
 
-napi_status getDeviceParam(napi_env env, cl_device_id deviceId,
+napi_status getDeviceParamString(napi_env env, cl_device_id deviceId,
   cl_device_info param, napi_value* result) {
 
   cl_int error;
@@ -92,6 +93,58 @@ napi_status getDeviceParam(napi_env env, cl_device_id deviceId,
   return status;
 }
 
+napi_status getDeviceParamBool(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result) {
+
+  cl_int error;
+  napi_status status;
+  cl_bool paramBool;
+  error = clGetDeviceInfo(deviceId, param, sizeof(cl_bool), &paramBool, 0);
+  THROW_CL_ERROR;
+
+  status = napi_get_boolean(env, (bool) paramBool, result);
+  return status;
+}
+
+napi_status getDeviceParamUint(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result) {
+
+    cl_int error;
+    napi_status status;
+    cl_uint paramInt;
+    error = clGetDeviceInfo(deviceId, param, sizeof(cl_uint), &paramInt, 0);
+    THROW_CL_ERROR;
+
+    status = napi_create_uint32(env, (uint32_t) paramInt, result);
+    return status;
+}
+
+napi_status getDeviceParamUlong(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result) {
+
+    cl_int error;
+    napi_status status;
+    cl_ulong paramLong;
+    error = clGetDeviceInfo(deviceId, param, sizeof(cl_ulong), &paramLong, 0);
+    THROW_CL_ERROR;
+
+    status = napi_create_int64(env, (int64_t) paramLong, result);
+    return status;
+}
+
+napi_status getDeviceParamSizet(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result) {
+
+    cl_int error;
+    napi_status status;
+    size_t paramSize;
+    error = clGetDeviceInfo(deviceId, param, sizeof(size_t), &paramSize, 0);
+    THROW_CL_ERROR;
+
+    status = napi_create_uint32(env, (int32_t) paramSize, result);
+    return status;
+}
+
 napi_status getDeviceInfo(napi_env env, cl_device_id deviceId, napi_value* result) {
   napi_status status;
 
@@ -99,10 +152,93 @@ napi_status getDeviceInfo(napi_env env, cl_device_id deviceId, napi_value* resul
   PASS_STATUS;
 
   napi_value param;
-  status = getDeviceParam(env, deviceId, CL_DEVICE_NAME, &param);
+  for ( uint32_t x = 0 ; x < deviceParamCount ; x++) {
+    status = deviceParams[x].getParam(env, deviceId, deviceParams[x].deviceInfo, &param);
+    PASS_STATUS;
+    status = napi_set_named_property(env, *result, deviceParams[x].name, param);
+    PASS_STATUS;
+  }
+
+  /* status = getDeviceParamString(env, deviceId, CL_DEVICE_NAME, &param);
   PASS_STATUS;
   status = napi_set_named_property(env, *result, "name", param);
   PASS_STATUS;
+
+  status = getDeviceParamString(env, deviceId, CL_DEVICE_BUILT_IN_KERNELS, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "builtInKernels", param);
+  PASS_STATUS;
+
+  status = getDeviceParamString(env, deviceId, CL_DEVICE_EXTENSIONS, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "deviceExtensions", param);
+  PASS_STATUS;
+
+  status = getDeviceParamString(env, deviceId, CL_DEVICE_OPENCL_C_VERSION, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "openclCVersion", param);
+  PASS_STATUS;
+
+  status = getDeviceParamString(env, deviceId, CL_DEVICE_PROFILE, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "deviceProfile", param);
+  PASS_STATUS;
+
+  // Property of "cl_ext.h" - out of scope for now
+  /* status = getDeviceParamString(env, deviceId, CL_DEVICE_SPIR_VERSIONS, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "spirVersions", param);
+  PASS_STATUS; */
+
+  /* status = getDeviceParamString(env, deviceId, CL_DEVICE_VENDOR, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "vendor", param);
+  PASS_STATUS;
+
+  status = getDeviceParamString(env, deviceId, CL_DEVICE_VERSION, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "version", param);
+  PASS_STATUS;
+
+  status = getDeviceParamString(env, deviceId, CL_DRIVER_VERSION, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "driverVersion", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_AVAILABLE, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "available", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_COMPILER_AVAILABLE, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "compilerAvailable", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_ENDIAN_LITTLE, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "endianLittle", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_ERROR_CORRECTION_SUPPORT, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "errorCorrectionSupport", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_IMAGE_SUPPORT, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "imageSupport", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_LINKER_AVAILABLE, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "linkedAvailable", param);
+  PASS_STATUS;
+
+  status = getDeviceParamBool(env, deviceId, CL_DEVICE_PREFERRED_INTEROP_USER_SYNC, &param);
+  PASS_STATUS;
+  status = napi_set_named_property(env, *result, "preferredIntropUserSync", param);
+  PASS_STATUS; */
 
   return napi_ok;
 }
