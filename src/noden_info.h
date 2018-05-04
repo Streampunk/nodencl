@@ -13,6 +13,9 @@
   limitations under the License.
 */
 
+#ifndef NODEN_INFO_H
+#define NODEN_INFO_H
+
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
 #else
@@ -20,9 +23,6 @@
 #endif
 #include <vector>
 #include "node_api.h"
-
-#ifndef NODEN_INFO_H
-#define NODEN_INFO_H
 
 cl_int getPlatformIds(std::vector<cl_platform_id> &ids);
 cl_int getDeviceIds(cl_uint platformId, std::vector<cl_device_id> &ids);
@@ -37,6 +37,14 @@ napi_status getDeviceParamUlong(napi_env env, cl_device_id deviceId,
   cl_device_info param, napi_value* result);
 napi_status getDeviceParamSizet(napi_env env, cl_device_id deviceId,
   cl_device_info param, napi_value* result);
+napi_status getDeviceParamEnum(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result);
+napi_status getDeviceParamBitfield(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result);
+napi_status getDeviceParamSizetArray(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result);
+napi_status getDeviceParamEnumArray(napi_env env, cl_device_id deviceId,
+  cl_device_info param, napi_value* result);
 
 typedef napi_status (*getParamFunc)(napi_env, cl_device_id, cl_device_info, napi_value*);
 
@@ -47,7 +55,6 @@ struct deviceParam {
 };
 
 const deviceParam deviceParams[] = {
-  { CL_DEVICE_NAME, "name", getDeviceParamString },
   { CL_DEVICE_AVAILABLE, "available", getDeviceParamBool },
   { CL_DEVICE_ADDRESS_BITS, "addressBits", getDeviceParamUint },
   { CL_DEVICE_BUILT_IN_KERNELS, "builtInKernels", getDeviceParamString },
@@ -104,9 +111,41 @@ const deviceParam deviceParams[] = {
   { CL_DEVICE_VENDOR, "vendor", getDeviceParamString },
   { CL_DEVICE_VENDOR_ID, "vendorId", getDeviceParamUint },
   { CL_DEVICE_VERSION, "version", getDeviceParamString },
-  { CL_DRIVER_VERSION, "driverVersion", getDeviceParamString }
+  { CL_DRIVER_VERSION, "driverVersion", getDeviceParamString },
+  { CL_DEVICE_GLOBAL_MEM_CACHE_TYPE, "globalMemCacheType", getDeviceParamEnum },
+  { CL_DEVICE_DOUBLE_FP_CONFIG, "doubleFPConfig", getDeviceParamBitfield },
+  { CL_DEVICE_EXECUTION_CAPABILITIES, "executionCapabilities", getDeviceParamBitfield },
+  { CL_DEVICE_LOCAL_MEM_TYPE, "localMemType", getDeviceParamEnum },
+  { CL_DEVICE_PARTITION_AFFINITY_DOMAIN, "partitionAffinityDomain", getDeviceParamBitfield },
+  { CL_DEVICE_QUEUE_ON_DEVICE_PROPERTIES, "queueOnDeviceProperties", getDeviceParamBitfield },
+  { CL_DEVICE_QUEUE_ON_HOST_PROPERTIES, "queueOnHostProperties", getDeviceParamBitfield },
+  { CL_DEVICE_SINGLE_FP_CONFIG, "singleFPConfig", getDeviceParamBitfield },
+  { CL_DEVICE_SVM_CAPABILITIES, "svmCapabilities", getDeviceParamBitfield },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_CHAR, "nativeVectorWidthChar", getDeviceParamUint },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_SHORT, "nativeVectorWidthShort", getDeviceParamUint },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_INT, "nativeVectorWidthInt", getDeviceParamUint },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_LONG, "nativeVectorWidthLong", getDeviceParamUint },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_FLOAT, "nativeVectorWidthFloat", getDeviceParamUint },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE, "nativeVectorWidthDouble", getDeviceParamUint },
+  { CL_DEVICE_NATIVE_VECTOR_WIDTH_HALF, "nativeVectorWidthHalf", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, "preferredVectorWidthChar", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT, "preferredVectorWidthShort", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT, "preferredVectorWidthInt", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG, "preferredVectorWidthLong", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT, "preferredVectorWidthFloat", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE, "preferredVectorWidthDouble", getDeviceParamUint },
+  { CL_DEVICE_PREFERRED_VECTOR_WIDTH_HALF, "preferredVectorWidthHalf", getDeviceParamUint },
+  { CL_DEVICE_MAX_WORK_ITEM_SIZES, "maxWorkItemSizes", getDeviceParamSizetArray },
+  { CL_DEVICE_PARTITION_PROPERTIES, "partitionProperties", getDeviceParamEnumArray },
+  { CL_DEVICE_NAME, "name", getDeviceParamString },
+  { CL_DEVICE_TYPE, "type", getDeviceParamBitfield }
 };
 
-const uint32_t deviceParamCount = 58;
+/* Device properties not yet supported and why:
 
-#endif NODEN_INFO_H
+- CL_DEVICE_PARTITION_TYPE - an array of enums - relates to subdevices - complex
+- CL_DEVICE_PLATFORM - returns a pointer - don't want to expose in JS land
+*/
+const uint32_t deviceParamCount = 142 - 58;
+
+#endif /* NODEN_INFO_H */

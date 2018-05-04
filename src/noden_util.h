@@ -35,8 +35,8 @@ napi_status checkStatus(napi_env env, napi_status status);
 #define PASS_CL_ERROR if (error != CL_SUCCESS) return error
 #define THROW_CL_ERROR if (error != CL_SUCCESS) { \
   char errorMsg [100]; \
-  sprintf(errorMsg, "OpenCL error in subroutine. Error %i: %s", error, \
-    clGetErrorString(error)); \
+  sprintf(errorMsg, "OpenCL error in subroutine. Location %s(%d) Error %i: %s", \
+    __FILE__, __LINE__, error, clGetErrorString(error)); \
   napi_throw_error(env, nullptr, errorMsg); \
   return napi_pending_exception; \
 }
