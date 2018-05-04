@@ -24,7 +24,9 @@
 #include <chrono>
 #include "node_api.h"
 
-napi_status checkStatus(napi_env env, napi_status status) {
+napi_status checkStatus(napi_env env, napi_status status,
+  const char* file, uint32_t line) {
+
   napi_status infoStatus, throwStatus;
   const napi_extended_error_info *errorInfo;
 
@@ -35,7 +37,8 @@ napi_status checkStatus(napi_env env, napi_status status) {
 
   infoStatus = napi_get_last_error_info(env, &errorInfo);
   assert(infoStatus == napi_ok);
-  printf("NAPI error %i: %s\n",  errorInfo->error_code, errorInfo->error_message);
+  printf("NAPI error in file %s on line %i. Error %i: %s\n", file, line,
+    errorInfo->error_code, errorInfo->error_message);
 
   if (status == napi_pending_exception) {
     printf("NAPI pending exception. Engine error code: %i\n", errorInfo->engine_error_code);
@@ -118,11 +121,14 @@ const char* clGetErrorString(cl_int errorCode) {
   };
 };
 
-cl_int clCheckError(napi_env env, cl_int error) {
+cl_int clCheckError(napi_env env, cl_int error,
+  const char* file, uint32_t line) {
+
   napi_status throwStatus;
   if (error == CL_SUCCESS) return error;
 
-  printf("OpenCL error %i: %s\n", error, clGetErrorString(error));
+  printf("OpenCL error in file %s line %i. Error %i: %s\n",
+    file, line, error, clGetErrorString(error));
 
   char errorCode[20];
   throwStatus = napi_throw_error(env,

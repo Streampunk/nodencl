@@ -478,3 +478,51 @@ napi_value getPlatformInfo(napi_env env, napi_callback_info info) {
 
   return platformArray;
 }
+
+napi_value findFirstGPU(napi_env env, napi_callback_info info) {
+  cl_int error;
+  napi_status status;
+
+  if (info != nullptr) { // If called from JS directly, check no args
+    napi_value* args = nullptr;
+    napi_valuetype* types = nullptr;
+    status = checkArgs(env, info, "findFirstGPU", args, (size_t) 0, types);
+    CHECK_STATUS;
+  }
+
+  std::vector<cl_platform_id> platformIds;
+  error = getPlatformIds(platformIds);
+  CHECK_CL_ERROR;
+
+  napi_value result;
+  status = napi_get_undefined(env, &result);
+  CHECK_STATUS;
+
+  for ( uint32_t x = 0 ; x < platformIds.size() ; x++ ) {
+    std::vector<cl_device_id> deviceIds;
+    error = getDeviceIds(x, deviceIds);
+    CHECK_CL_ERROR;
+    for ( uint32_t y = 0 ; y < deviceIds.size() ; y++ ) {
+      cl_ulong deviceType;
+      error = clGetDeviceInfo(deviceIds[y], CL_DEVICE_TYPE, sizeof(cl_ulong),
+        &deviceType, nullptr);
+      CHECK_CL_ERROR;
+      if (deviceType == CL_DEVICE_TYPE_GPU) {
+        status = napi_create_object(env, &result);
+        CHECK_STATUS;
+        napi_value platformIndex, deviceIndex;
+        status = napi_create_uint32(env, x, &platformIndex);
+        CHECK_STATUS;
+        status = napi_create_uint32(env, y, &deviceIndex);
+        CHECK_STATUS;
+        status = napi_set_named_property(env, result, "platformIndex", platformIndex);
+        CHECK_STATUS;
+        status = napi_set_named_property(env, result, "deviceIndex", deviceIndex);
+        CHECK_STATUS;
+        break;
+      }
+    }
+  }
+
+  return result;
+}

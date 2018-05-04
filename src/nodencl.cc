@@ -862,9 +862,10 @@ napi_value Init(napi_env env, napi_value exports) {
     DECLARE_NAPI_METHOD("runProgramSVM", RunProgramSVM),
     DECLARE_NAPI_METHOD("createSVMBuffer", CreateSVMBuffer),
     DECLARE_NAPI_METHOD("getDeviceTypes", GetDeviceTypes),
-    DECLARE_NAPI_METHOD("getPlatformInfo", getPlatformInfo)
+    DECLARE_NAPI_METHOD("getPlatformInfo", getPlatformInfo),
+    DECLARE_NAPI_METHOD("findFirstGPU", findFirstGPU)
    };
-  status = napi_define_properties(env, exports, 8, desc);
+  status = napi_define_properties(env, exports, 9, desc);
   assert(status == napi_ok);
 
   return exports;

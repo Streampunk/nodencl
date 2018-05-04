@@ -13,6 +13,9 @@
   limitations under the License.
 */
 
+#ifndef NODEN_UTIL_H
+#define NODEN_UTIL_H
+
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
 #else
@@ -25,23 +28,24 @@
 #define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
 
 // Handling NAPI errors - use "napi_status status;" where used
-#define CHECK_STATUS if (checkStatus(env, status) != napi_ok) return nullptr
+#define CHECK_STATUS if (checkStatus(env, status, __FILE__, __LINE__) != napi_ok) return nullptr
 #define PASS_STATUS if (status != napi_ok) return status
 
-napi_status checkStatus(napi_env env, napi_status status);
+napi_status checkStatus(napi_env env, napi_status status,
+  const char * file, uint32_t line);
 
 // Handling CL errors - use "cl_int error;" where used
-#define CHECK_CL_ERROR if (clCheckError(env, error) != CL_SUCCESS) return nullptr
+#define CHECK_CL_ERROR if (clCheckError(env, error, __FILE__, __LINE__) != CL_SUCCESS) return nullptr
 #define PASS_CL_ERROR if (error != CL_SUCCESS) return error
 #define THROW_CL_ERROR if (error != CL_SUCCESS) { \
   char errorMsg [100]; \
-  sprintf(errorMsg, "OpenCL error in subroutine. Location %s(%d) Error %i: %s", \
+  sprintf(errorMsg, "OpenCL error in subroutine. Location %s(%d). Error %i: %s", \
     __FILE__, __LINE__, error, clGetErrorString(error)); \
   napi_throw_error(env, nullptr, errorMsg); \
   return napi_pending_exception; \
 }
 
-cl_int clCheckError(napi_env env, cl_int error);
+cl_int clCheckError(napi_env env, cl_int error, const char* file, uint32_t line);
 const char* clGetErrorString(cl_int error);
 
 // High resolution timing
@@ -51,3 +55,5 @@ long long microTime(std::chrono::high_resolution_clock::time_point start);
 // Argument processing
 napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
   napi_value* args, size_t argc, napi_valuetype* types);
+
+#endif // NODEN_UTIL_H

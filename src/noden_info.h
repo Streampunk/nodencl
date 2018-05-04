@@ -27,6 +27,7 @@
 cl_int getPlatformIds(std::vector<cl_platform_id> &ids);
 cl_int getDeviceIds(cl_uint platformId, std::vector<cl_device_id> &ids);
 napi_value getPlatformInfo(napi_env env, napi_callback_info info);
+napi_value findFirstGPU(napi_env env, napi_callback_info info);
 napi_status getDeviceParamString(napi_env env, cl_device_id deviceId,
   cl_device_info param, napi_value* result);
 napi_status getDeviceParamBool(napi_env env, cl_device_id deviceId,
