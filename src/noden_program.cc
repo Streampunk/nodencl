@@ -20,6 +20,7 @@
 #endif
 #include <chrono>
 #include <vector>
+#include <regex>
 #include <stdio.h>
 #include "node_api.h"
 #include "noden_util.h"
@@ -54,12 +55,81 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   if (error == CL_SUCCESS) printf("Failed to relase CL kernel.\n");
 }
 
+void createBufferExecute(napi_env env, void* data) {
+  createBufCarrier* c = (createBufCarrier*) data;
+}
+
+void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
+  createBufCarrier* c = (createBufCarrier*) data;
+
+  delete c;
+  napi_delete_async_work(env, c->_request);
+}
+
+napi_value createBuffer(napi_env env, napi_callback_info info) {
+  napi_status status;
+  createBufCarrier* c = new createBufCarrier;
+
+  napi_value thisValue;
+  status = napi_get_cb_info(env, info, 0, nullptr, &thisValue, nullptr);
+
+  bool hasProp;
+  status = napi_has_named_property(env, thisValue, "name", &hasProp);
+  CHECK_STATUS;
+  printf("I got called with hasProp %i\n", hasProp);
+
+  napi_value promise, resource_name;
+  status = napi_create_promise(env, &c->_deferred, &promise);
+  CHECK_STATUS;
+
+  status = napi_create_string_utf8(env, "CreateBuffer", NAPI_AUTO_LENGTH, &resource_name);
+  CHECK_STATUS;
+  status = napi_create_async_work(env, NULL, resource_name, createBufferExecute,
+    createBufferComplete, c, &c->_request);
+  CHECK_STATUS;
+  status = napi_queue_async_work(env, c->_request);
+  CHECK_STATUS;
+
+  return promise;
+}
+
+void runExecute(napi_env env, void* data) {
+  runCarrier* c = (runCarrier*) data;
+}
+
+void runComplete(napi_env env, napi_status asyncStatus, void* data) {
+  runCarrier* c = (runCarrier*) data;
+
+  delete c;
+  napi_delete_async_work(env, c->_request);
+}
+
+napi_value run(napi_env env, napi_callback_info info) {
+  napi_status status;
+  runCarrier* c = new runCarrier;
+
+  napi_value promise, resource_name;
+  status = napi_create_promise(env, &c->_deferred, &promise);
+  CHECK_STATUS;
+
+  status = napi_create_string_utf8(env, "Run", NAPI_AUTO_LENGTH, &resource_name);
+  CHECK_STATUS;
+  status = napi_create_async_work(env, NULL, resource_name, runExecute,
+    runComplete, c, &c->_request);
+  CHECK_STATUS;
+  status = napi_queue_async_work(env, c->_request);
+  CHECK_STATUS;
+
+  return promise;
+}
+
 // Promise to create a program with context and queue
 void buildExecute(napi_env env, void* data) {
   buildCarrier* c = (buildCarrier*) data;
   cl_int error;
 
   printf("Execution starting\n");
+  HR_TIME_POINT start = NOW;
 
   std::vector<cl_platform_id> platformIds;
   error = getPlatformIds(platformIds);
@@ -89,6 +159,27 @@ void buildExecute(napi_env env, void* data) {
 
   c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
   ASYNC_CL_ERROR;
+
+  c->program = clCreateProgramWithSource(c->context, 1, (const char **) &c->kernelSource,
+    nullptr, &error);
+  ASYNC_CL_ERROR;
+
+  error = clBuildProgram(c->program, 0, nullptr, nullptr, nullptr, nullptr);
+  if (error != CL_SUCCESS) {
+    size_t len;
+    char buffer[2048];
+
+    clGetProgramBuildInfo(c->program, c->deviceId, CL_PROGRAM_BUILD_LOG,
+      sizeof(buffer), buffer, &len);
+    c->status = NODEN_BUILD_ERROR;
+    c->errorMsg = buffer;
+    return;
+  }
+
+  c->kernel = clCreateKernel(c->program, c->name, &error);
+  ASYNC_CL_ERROR;
+
+  c->buildTime = microTime(start);
 }
 
 void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -109,13 +200,13 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
     status = napi_create_string_utf8(env, c->errorMsg, NAPI_AUTO_LENGTH, &errorMsg);
     status = napi_create_error(env, errorCode, errorMsg, &errorValue);
     status = napi_reject_deferred(env, c->_deferred, errorValue);
-    napi_delete_reference(env, c->program);
+    napi_delete_reference(env, c->jsProgram);
     delete(c);
     napi_delete_async_work(env, c->_request);
     return;
   }
 
-  status = napi_get_reference_value(env, c->program, &result);
+  status = napi_get_reference_value(env, c->jsProgram, &result);
 
   napi_value jsDeviceId;
   status = napi_create_external(env, c->deviceId, nullptr, nullptr, &jsDeviceId);
@@ -129,9 +220,31 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   status = napi_create_external(env, c->commands, tidyQueue, nullptr, &jsCommands);
   status = napi_set_named_property(env, result, "commands", jsCommands);
 
+  napi_value jsExtProgram;
+  status = napi_create_external(env, c->program, tidyProgram, nullptr, &jsExtProgram);
+  status = napi_set_named_property(env, result, "program", jsExtProgram);
+
+  napi_value jsKernel;
+  status = napi_create_external(env, c->program, tidyKernel, nullptr, &jsKernel);
+  status = napi_set_named_property(env, result, "kernel", jsKernel);
+
+  napi_value jsBuildTime;
+  status = napi_create_double(env, c->buildTime / 1000000.0, &jsBuildTime);
+  status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
+
+  napi_value createBufValue;
+  status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
+    createBuffer, nullptr, &createBufValue);
+  status = napi_set_named_property(env, result, "createBuffer", createBufValue);
+
+  napi_value runValue;
+  status = napi_create_function(env, "run", NAPI_AUTO_LENGTH, run,
+    nullptr, &runValue);
+  status = napi_set_named_property(env, result, "run", runValue);
+
   status = napi_resolve_deferred(env, c->_deferred, result);
 
-  napi_delete_reference(env, c->program);
+  napi_delete_reference(env, c->jsProgram);
   delete(c);
   napi_delete_async_work(env, c->_request);
 }
@@ -252,7 +365,33 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   status = napi_set_named_property(env, program, "deviceIndex", deviceValue);
   CHECK_STATUS;
 
-  status = napi_create_reference(env, program, 1, &carrier->program);
+  napi_value nameValue;
+  status = napi_has_named_property(env, config, "name", &hasProp);
+  CHECK_STATUS;
+  if (hasProp) {
+    status = napi_get_named_property(env, config, "name", &nameValue);
+    CHECK_STATUS;
+  } else {
+    std::regex re("__kernel\\s+void\\s+([^\\s\\(]+)\\s*\\(");
+    std::cmatch match;
+    std::string parsedName;
+    if (std::regex_search(carrier->kernelSource, match, re) && match.size() > 1) {
+      parsedName = match.str(1);
+    } else {
+      parsedName = std::string("noden");
+    }
+    status = napi_create_string_utf8(env, parsedName.data(), parsedName.length(), &nameValue);
+    CHECK_STATUS;
+  }
+  status = napi_set_named_property(env, program, "name", nameValue);
+  CHECK_STATUS;
+  status = napi_get_value_string_utf8(env, nameValue, nullptr, 0, &carrier->nameLength);
+  CHECK_STATUS;
+  carrier->name = (char *) malloc(carrier->nameLength + 1);
+  status = napi_get_value_string_utf8(env, nameValue, carrier->name, carrier->nameLength + 1, nullptr);
+  CHECK_STATUS;
+
+  status = napi_create_reference(env, program, 1, &carrier->jsProgram);
   CHECK_STATUS;
 
   status = napi_create_promise(env, &carrier->_deferred, &promise);

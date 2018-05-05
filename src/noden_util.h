@@ -50,6 +50,7 @@ const char* clGetErrorString(cl_int error);
 
 // High resolution timing
 #define HR_TIME_POINT std::chrono::high_resolution_clock::time_point
+#define NOW std::chrono::high_resolution_clock::now()
 long long microTime(std::chrono::high_resolution_clock::time_point start);
 
 // Argument processing

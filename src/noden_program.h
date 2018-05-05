@@ -27,22 +27,44 @@
 
 #define NODEN_OUT_OF_RANGE 4097
 #define NODEN_ASYNC_FAILURE 4098
+#define NODEN_BUILD_ERROR 4099
 #define NODEN_SUCCESS 0
 
 typedef struct {
   char* kernelSource;
   size_t sourceLength;
-  napi_ref program;
+  napi_ref jsProgram;
   uint32_t platformIndex;
   uint32_t deviceIndex;
   cl_device_id deviceId;
   cl_context context;
   cl_command_queue commands;
+  cl_program program;
+  cl_kernel kernel;
+  char* name;
+  size_t nameLength;
   int32_t status = NODEN_SUCCESS;
   char* errorMsg;
+  long long buildTime;
   napi_deferred _deferred;
   napi_async_work _request;
 } buildCarrier;
+
+typedef struct {
+  int32_t status = NODEN_SUCCESS;
+  char* errorMsg;
+  long long createTime;
+  napi_deferred _deferred;
+  napi_async_work _request;
+} createBufCarrier;
+
+typedef struct {
+  int32_t status = NODEN_SUCCESS;
+  char* errorMsg;
+  long long runTime;
+  napi_deferred _deferred;
+  napi_async_work _request;
+} runCarrier;
 
 napi_value createProgram(napi_env env, napi_callback_info info);
 
