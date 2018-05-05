@@ -27,6 +27,7 @@
 #include <time.h>
 #include "noden_util.h"
 #include "noden_info.h"
+#include "noden_program.h"
 #include "node_api.h"
 
 cl_int GetPlatformName(cl_platform_id id, std::string* result) {
@@ -863,9 +864,10 @@ napi_value Init(napi_env env, napi_value exports) {
     DECLARE_NAPI_METHOD("createSVMBuffer", CreateSVMBuffer),
     DECLARE_NAPI_METHOD("getDeviceTypes", GetDeviceTypes),
     DECLARE_NAPI_METHOD("getPlatformInfo", getPlatformInfo),
-    DECLARE_NAPI_METHOD("findFirstGPU", findFirstGPU)
+    DECLARE_NAPI_METHOD("findFirstGPU", findFirstGPU),
+    DECLARE_NAPI_METHOD("createProgram", createProgram)
    };
-  status = napi_define_properties(env, exports, 9, desc);
+  status = napi_define_properties(env, exports, 10, desc);
   assert(status == napi_ok);
 
   return exports;

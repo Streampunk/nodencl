@@ -1,4 +1,4 @@
-createProgram(0, 1, kernel) => Promise => CLProgram on platform 0, device 1
+createProgram(kernel, { platformIndex: 0, deviveIndex: 1 }) => Promise => CLProgram on platform 0, device 1
 createProgram(kernel) => Promise => CLProgram on first GPU detected
 
 CLProgram {
