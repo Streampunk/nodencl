@@ -35,6 +35,9 @@ typedef struct {
   napi_ref program;
   uint32_t platformIndex;
   uint32_t deviceIndex;
+  cl_device_id deviceId;
+  cl_context context;
+  cl_command_queue commands;
   int32_t status = NODEN_SUCCESS;
   char* errorMsg;
   napi_deferred _deferred;
@@ -42,5 +45,13 @@ typedef struct {
 } buildCarrier;
 
 napi_value createProgram(napi_env env, napi_callback_info info);
+
+#define ASYNC_CL_ERROR if (error != CL_SUCCESS) { \
+  c->status = error; \
+  c->errorMsg = (char *) malloc(200); \
+  sprintf(c->errorMsg, "In file %s line %d, got CL error %i of type %s.", \
+    __FILE__, __LINE__ - 4, error, clGetErrorString(error)); \
+  return; \
+}
 
 #endif

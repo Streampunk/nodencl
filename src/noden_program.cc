@@ -21,11 +21,38 @@
 #include <chrono>
 #include <vector>
 #include <stdio.h>
-#include <windows.h>
 #include "node_api.h"
 #include "noden_util.h"
 #include "noden_info.h"
 #include "noden_program.h"
+
+void tidyContext(napi_env env, void* data, void* hint) {
+  printf("Context finalizer called.\n");
+  cl_int error = CL_SUCCESS;
+  error = clReleaseContext((cl_context) data);
+  if (error != CL_SUCCESS) printf("Failed to release CL context.\n");
+}
+
+void tidyQueue(napi_env env, void* data, void* hint) {
+  printf("Queue finalizer called.\n");
+  cl_int error = CL_SUCCESS;
+  error = clReleaseCommandQueue((cl_command_queue) data);
+  if (error != CL_SUCCESS) printf("Failed to release CL queue.\n");
+}
+
+void tidyProgram(napi_env env, void* data, void* hint) {
+  printf("Program finalizer called.\n");
+  cl_int error = CL_SUCCESS;
+  error = clReleaseProgram((cl_program) data);
+  if (error != CL_SUCCESS) printf("Failed to release CL program.\n");
+}
+
+void tidyKernel(napi_env env, void* data, void* hint) {
+  printf("Kernel finalizer called.\n");
+  cl_int error = CL_SUCCESS;
+  error = clReleaseKernel((cl_kernel) data);
+  if (error == CL_SUCCESS) printf("Failed to relase CL kernel.\n");
+}
 
 // Promise to create a program with context and queue
 void buildExecute(napi_env env, void* data) {
@@ -36,6 +63,7 @@ void buildExecute(napi_env env, void* data) {
 
   std::vector<cl_platform_id> platformIds;
   error = getPlatformIds(platformIds);
+  ASYNC_CL_ERROR;
 
   if (c->platformIndex >= platformIds.size()) {
     c->status = NODEN_OUT_OF_RANGE;
@@ -45,6 +73,7 @@ void buildExecute(napi_env env, void* data) {
 
   std::vector<cl_device_id> deviceIds;
   error = getDeviceIds(c->platformIndex, deviceIds);
+  ASYNC_CL_ERROR;
 
   if (c->deviceIndex >= deviceIds.size()) {
     c->status = NODEN_OUT_OF_RANGE;
@@ -54,7 +83,12 @@ void buildExecute(napi_env env, void* data) {
     return;
   }
 
-  Sleep(1000);
+  c->deviceId = deviceIds[c->deviceIndex];
+  c->context = clCreateContext(0, 1, &c->deviceId, nullptr, nullptr, &error);
+  ASYNC_CL_ERROR;
+
+  c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
+  ASYNC_CL_ERROR;
 }
 
 void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -82,6 +116,18 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   }
 
   status = napi_get_reference_value(env, c->program, &result);
+
+  napi_value jsDeviceId;
+  status = napi_create_external(env, c->deviceId, nullptr, nullptr, &jsDeviceId);
+  status = napi_set_named_property(env, result, "deviceId", jsDeviceId);
+
+  napi_value jsContext;
+  status = napi_create_external(env, c->context, tidyContext, nullptr, &jsContext);
+  status = napi_set_named_property(env, result, "context", jsContext);
+
+  napi_value jsCommands;
+  status = napi_create_external(env, c->commands, tidyQueue, nullptr, &jsCommands);
+  status = napi_set_named_property(env, result, "commands", jsCommands);
 
   status = napi_resolve_deferred(env, c->_deferred, result);
 

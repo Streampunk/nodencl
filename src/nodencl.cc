@@ -228,7 +228,7 @@ napi_value GetDeviceTypes(napi_env env, napi_callback_info info) {
   return result;
 }
 
-void tidyQueue(napi_env env, void* data, void* hint) {
+/* void tidyQueue(napi_env env, void* data, void* hint) {
   printf("Queue finalizer called.\n");
   cl_int error = CL_SUCCESS;
   error = clReleaseCommandQueue((cl_command_queue) data);
@@ -254,7 +254,7 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   cl_int error = CL_SUCCESS;
   error = clReleaseKernel((cl_kernel) data);
   assert(error == CL_SUCCESS);
-}
+} */
 
 /* typedef struct {
   char* kernelSource;
@@ -470,13 +470,13 @@ napi_value BuildAProgram(napi_env env, napi_callback_info info) {
   napi_value jsprogram;
   napi_value jsdeviceid;
 
-  status = napi_create_external(env, (void *) context, tidyContext, nullptr, &jscontext);
+  status = napi_create_external(env, (void *) context, nullptr, nullptr, &jscontext);
   assert(status == napi_ok);
-  status = napi_create_external(env, (void *) kernel, tidyKernel, nullptr, &jskernel);
+  status = napi_create_external(env, (void *) kernel, nullptr, nullptr, &jskernel);
   assert(status == napi_ok);
-  status = napi_create_external(env, (void *) program, tidyProgram, nullptr, &jsprogram);
+  status = napi_create_external(env, (void *) program, nullptr, nullptr, &jsprogram);
   assert(status == napi_ok);
-  status = napi_create_external(env, (void *) commands, tidyQueue, nullptr, &jscommands);
+  status = napi_create_external(env, (void *) commands, nullptr, nullptr, &jscommands);
   assert(status == napi_ok);
   status = napi_create_external(env, (void *) device_id, nullptr, nullptr, &jsdeviceid);
   assert(status == napi_ok);
