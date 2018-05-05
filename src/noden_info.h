@@ -149,4 +149,10 @@ const deviceParam deviceParams[] = {
 */
 const uint32_t deviceParamCount = 142 - 58;
 
+// Field not supported on pre 2.0
+#define INVALID_CHECK if (error == CL_INVALID_VALUE) {\
+  status = napi_get_undefined(env, result); \
+  return status; \
+}
+
 #endif /* NODEN_INFO_H */

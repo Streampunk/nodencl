@@ -186,6 +186,7 @@ napi_status getPlatformParam(napi_env env, cl_platform_id platformId,
   napi_status status;
   size_t paramSize;
   error = clGetPlatformInfo(platformId, param, 0, nullptr, &paramSize);
+  INVALID_CHECK;
   THROW_CL_ERROR;
 
   char* paramString = (char *) malloc(sizeof(char) * paramSize);
@@ -204,6 +205,7 @@ napi_status getDeviceParamString(napi_env env, cl_device_id deviceId,
   napi_status status;
   size_t paramSize;
   error = clGetDeviceInfo(deviceId, param, 0, nullptr, &paramSize);
+  INVALID_CHECK;
   THROW_CL_ERROR;
 
   char* paramString = (char *) malloc(sizeof(char) * paramSize);
@@ -222,6 +224,7 @@ napi_status getDeviceParamBool(napi_env env, cl_device_id deviceId,
   napi_status status;
   cl_bool paramBool;
   error = clGetDeviceInfo(deviceId, param, sizeof(cl_bool), &paramBool, 0);
+  INVALID_CHECK;
   THROW_CL_ERROR;
 
   status = napi_get_boolean(env, (bool) paramBool, result);
@@ -235,6 +238,7 @@ napi_status getDeviceParamUint(napi_env env, cl_device_id deviceId,
     napi_status status;
     cl_uint paramInt;
     error = clGetDeviceInfo(deviceId, param, sizeof(cl_uint), &paramInt, 0);
+    INVALID_CHECK;
     THROW_CL_ERROR;
 
     status = napi_create_uint32(env, (uint32_t) paramInt, result);
@@ -248,6 +252,7 @@ napi_status getDeviceParamUlong(napi_env env, cl_device_id deviceId,
     napi_status status;
     cl_ulong paramLong;
     error = clGetDeviceInfo(deviceId, param, sizeof(cl_ulong), &paramLong, 0);
+    INVALID_CHECK;
     THROW_CL_ERROR;
 
     status = napi_create_int64(env, (int64_t) paramLong, result);
@@ -261,6 +266,7 @@ napi_status getDeviceParamSizet(napi_env env, cl_device_id deviceId,
     napi_status status;
     size_t paramSize;
     error = clGetDeviceInfo(deviceId, param, sizeof(size_t), &paramSize, 0);
+    INVALID_CHECK;
     THROW_CL_ERROR;
 
     status = napi_create_uint32(env, (int32_t) paramSize, result);
@@ -274,6 +280,15 @@ napi_status getDeviceParamEnum(napi_env env, cl_device_id deviceId,
   napi_value enumValue;
   status = getDeviceParamUint(env, deviceId, param, &enumValue);
   PASS_STATUS;
+
+  // Field not supported on pre 2.0
+  napi_valuetype enumType;
+  status = napi_typeof(env, enumValue, &enumType);
+  PASS_STATUS;
+  if (enumType == napi_undefined) {
+    *result = enumValue;
+    return napi_ok;
+  }
 
   uint32_t value;
   status = napi_get_value_uint32(env, enumValue, &value);
@@ -291,6 +306,15 @@ napi_status getDeviceParamBitfield(napi_env env, cl_device_id deviceId,
   napi_value fieldValue;
   status = getDeviceParamUlong(env, deviceId, param, &fieldValue);
   PASS_STATUS;
+
+  // Field not supported on pre 2.0
+  napi_valuetype fieldType;
+  status = napi_typeof(env, fieldValue, &fieldType);
+  PASS_STATUS;
+  if (fieldType == napi_undefined) {
+    *result = fieldValue;
+    return napi_ok;
+  }
 
   int64_t value;
   status = napi_get_value_int64(env, fieldValue, &value);
@@ -322,6 +346,7 @@ napi_status getDeviceParamSizetArray(napi_env env, cl_device_id deviceId,
   napi_status status;
   size_t paramSize;
   error = clGetDeviceInfo(deviceId, param, 0, nullptr, &paramSize);
+  INVALID_CHECK;
   THROW_CL_ERROR;
 
   size_t* paramArray = (size_t *) malloc(sizeof(size_t) * paramSize);
@@ -350,6 +375,7 @@ napi_status getDeviceParamEnumArray(napi_env env, cl_device_id deviceId,
   napi_status status;
   size_t paramSize;
   error = clGetDeviceInfo(deviceId, param, 0, nullptr, &paramSize);
+  INVALID_CHECK;
   THROW_CL_ERROR;
 
   uint64_t* paramArray = (uint64_t *) malloc(sizeof(uint64_t) * paramSize);
