@@ -27,6 +27,19 @@
 #include "noden_util.h"
 
 struct runCarrier : carrier {
+  void* input;
+  char inputType[10] = "none";
+  uint32_t inputSize;
+  void* output;
+  char outputType[10] = "none";
+  uint32_t outputSize;
+  uint32_t workGroupSize;
+  long long dataToKernel;
+  long long kernelExec;
+  long long dataFromKernel;
+  cl_context context;
+  cl_command_queue commands;
+  cl_kernel kernel;
 };
 
 // void runExecute(napi_env env, void* data);

@@ -23,14 +23,111 @@
 #include "node_api.h"
 #include "noden_util.h"
 #include "noden_info.h"
+#include "noden_buffer.h"
 #include "noden_run.h"
 
 void runExecute(napi_env env, void* data) {
   runCarrier* c = (runCarrier*) data;
+  cl_int error;
+  cl_mem input;
+  cl_mem output;
+
+  HR_TIME_POINT bufAlloc = NOW;
+  // Not recording buffer create time - should probably be done once, before here
+  if (c->inputType[0] == NODEN_SVM_NONE_CHAR) {
+    input = clCreateBuffer(c->context, CL_MEM_READ_ONLY, c->inputSize,
+      nullptr, &error);
+    ASYNC_CL_ERROR;
+  }
+  if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
+    output = clCreateBuffer(c->context, CL_MEM_WRITE_ONLY, c->outputSize,
+      nullptr, &error);
+    ASYNC_CL_ERROR;
+  }
+
+  printf("Took %lluus to create GPU buffers.\n", microTime(bufAlloc));
+
+  HR_TIME_POINT start = NOW;
+  HR_TIME_POINT dataToKernelStart = start;
+
+  if (c->inputType[0] == NODEN_SVM_COARSE_CHAR) {
+    error = clEnqueueSVMUnmap(c->commands, c->input, 0, 0, 0);
+    ASYNC_CL_ERROR;
+  }
+  if (c->outputType[0] == NODEN_SVM_COARSE_CHAR) {
+    error = clEnqueueSVMUnmap(c->commands, c->output, 0, 0, 0);
+    ASYNC_CL_ERROR;
+  }
+
+  if (c->inputType[0] != NODEN_SVM_NONE_CHAR) {
+    error = clSetKernelArgSVMPointer(c->kernel, 0, c->input);
+    ASYNC_CL_ERROR;
+  } else {
+    error = clEnqueueWriteBuffer(c->commands, input, CL_TRUE, 0, c->inputSize,
+      c->input, 0, nullptr, nullptr);
+    ASYNC_CL_ERROR;
+    error = clSetKernelArg(c->kernel, 0, sizeof(cl_mem), &input);
+    ASYNC_CL_ERROR;
+  }
+
+  if (c->outputType[0] != NODEN_SVM_NONE_CHAR) {
+    error = clSetKernelArgSVMPointer(c->kernel, 1, c->output);
+    ASYNC_CL_ERROR;
+  } else {
+    error = clSetKernelArg(c->kernel, 1, sizeof(cl_mem), &output);
+    ASYNC_CL_ERROR;
+  }
+  error = clSetKernelArg(c->kernel, 2, sizeof(unsigned int), &c->inputSize);
+  ASYNC_CL_ERROR;
+
+  c->dataToKernel = microTime(dataToKernelStart);
+  HR_TIME_POINT kernelExecStart = NOW;
+
+  size_t local = c->workGroupSize;
+  size_t global = (size_t) c->inputSize;
+  error = clEnqueueNDRangeKernel(c->commands, c->kernel, 1, nullptr, &global, &local,
+    0, nullptr, nullptr);
+  ASYNC_CL_ERROR;
+
+  error = clFinish(c->commands);
+  ASYNC_CL_ERROR;
+
+  c->kernelExec = microTime(kernelExecStart);
+  HR_TIME_POINT dataFromKernelStart = NOW;
+
+  if (c->inputType[0] == NODEN_SVM_COARSE_CHAR) {
+    error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, c->input, c->inputSize, 0, 0, 0);
+    ASYNC_CL_ERROR;
+  }
+  if (c->outputType[0] == NODEN_SVM_COARSE_CHAR) {
+    error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, c->output, c->outputSize, 0, 0, 0);
+    ASYNC_CL_ERROR;
+  }
+
+  if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
+    error = clEnqueueReadBuffer(c->commands, output, CL_TRUE, 0,
+      c->outputSize, c->output, 0, nullptr, nullptr);
+    ASYNC_CL_ERROR;
+  }
+  c->dataFromKernel = microTime(dataFromKernelStart);
+
+  c->totalTime = microTime(start);
 }
 
 void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   runCarrier* c = (runCarrier*) data;
+
+  printf("Run completed with status %i.\n", asyncStatus);
+
+  if (asyncStatus != napi_ok) {
+    c->status = asyncStatus;
+    c->errorMsg = "Async run of program failed to complete.";
+  }
+  REJECT_STATUS;
+
+  napi_value result;
+  c->status = napi_create_object(env, &result);
+  REJECT_STATUS;
 
   delete c;
   napi_delete_async_work(env, c->_request);
@@ -39,6 +136,46 @@ void runComplete(napi_env env, napi_status asyncStatus, void* data) {
 napi_value run(napi_env env, napi_callback_info info) {
   napi_status status;
   runCarrier* c = new runCarrier;
+
+  napi_value args[2];
+  size_t argc = 2;
+  napi_value programValue;
+  status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
+  CHECK_STATUS;
+
+  // Extract externals into variables
+  napi_value jsContext;
+  void* contextData;
+  status = napi_get_named_property(env, programValue, "context", &jsContext);
+  CHECK_STATUS;
+  status = napi_get_value_external(env, jsContext, &contextData);
+  c->context = (cl_context) contextData;
+  CHECK_STATUS;
+
+  napi_value jsCommands;
+  void* commandsData;
+  status = napi_get_named_property(env, programValue, "commands", &jsCommands);
+  CHECK_STATUS;
+  status = napi_get_value_external(env, jsCommands, &commandsData);
+  c->commands = (cl_command_queue) commandsData;
+  CHECK_STATUS;
+
+  napi_value jsKernel;
+  void* kernelData;
+  status = napi_get_named_property(env, programValue, "kernel", &jsKernel);
+  CHECK_STATUS;
+  status = napi_get_value_external(env, jsKernel, &kernelData);
+  c->kernel = (cl_kernel) kernelData;
+  CHECK_STATUS;
+
+  napi_value workGroupValue;
+  status = napi_get_named_property(env, programValue, "workGroupSize", &workGroupValue);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, workGroupValue, &c->workGroupSize);
+  CHECK_STATUS;
+
+  status = napi_create_reference(env, programValue, 1, &c->passthru);
+  CHECK_STATUS;
 
   napi_value promise, resource_name;
   status = napi_create_promise(env, &c->_deferred, &promise);
