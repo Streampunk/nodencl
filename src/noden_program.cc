@@ -88,6 +88,14 @@ void buildExecute(napi_env env, void* data) {
   }
 
   c->deviceId = deviceIds[c->deviceIndex];
+  error = clGetDeviceInfo(c->deviceId, CL_DEVICE_SVM_CAPABILITIES,
+    sizeof(cl_ulong), &c->svmCaps, nullptr);
+  if (error == CL_INVALID_VALUE) {
+    c->svmCaps = 0;
+  } else {
+    ASYNC_CL_ERROR;
+  }
+
   c->context = clCreateContext(0, 1, &c->deviceId, nullptr, nullptr, &error);
   ASYNC_CL_ERROR;
 
@@ -113,13 +121,16 @@ void buildExecute(napi_env env, void* data) {
   c->kernel = clCreateKernel(c->program, c->name, &error);
   ASYNC_CL_ERROR;
 
+  error = clGetKernelWorkGroupInfo(c->kernel, c->deviceId, CL_KERNEL_WORK_GROUP_SIZE,
+    sizeof(size_t), &c->workGroupSize, nullptr);
+  ASYNC_CL_ERROR;
+
   c->totalTime = microTime(start);
 }
 
 void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   buildCarrier* c = (buildCarrier*) data;
-  napi_status status;
-  napi_value result, source;
+  napi_value result;
 
   if (asyncStatus != napi_ok) {
     c->status = asyncStatus;
@@ -131,55 +142,74 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   REJECT_STATUS;
 
   napi_value jsDeviceId;
-  status = napi_create_external(env, c->deviceId, nullptr, nullptr, &jsDeviceId);
+  c->status = napi_create_external(env, c->deviceId, nullptr, nullptr, &jsDeviceId);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "deviceId", jsDeviceId);
+  c->status = napi_set_named_property(env, result, "deviceId", jsDeviceId);
   REJECT_STATUS;
 
   napi_value jsContext;
-  status = napi_create_external(env, c->context, tidyContext, nullptr, &jsContext);
+  c->status = napi_create_external(env, c->context, tidyContext, nullptr, &jsContext);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "context", jsContext);
+  c->status = napi_set_named_property(env, result, "context", jsContext);
   REJECT_STATUS;
 
   napi_value jsCommands;
-  status = napi_create_external(env, c->commands, tidyQueue, nullptr, &jsCommands);
+  c->status = napi_create_external(env, c->commands, tidyQueue, nullptr, &jsCommands);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "commands", jsCommands);
+  c->status = napi_set_named_property(env, result, "commands", jsCommands);
   REJECT_STATUS;
 
   napi_value jsExtProgram;
-  status = napi_create_external(env, c->program, tidyProgram, nullptr, &jsExtProgram);
+  c->status = napi_create_external(env, c->program, tidyProgram, nullptr, &jsExtProgram);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "program", jsExtProgram);
+  c->status = napi_set_named_property(env, result, "program", jsExtProgram);
   REJECT_STATUS;
 
   napi_value jsKernel;
-  status = napi_create_external(env, c->program, tidyKernel, nullptr, &jsKernel);
+  c->status = napi_create_external(env, c->program, tidyKernel, nullptr, &jsKernel);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "kernel", jsKernel);
+  c->status = napi_set_named_property(env, result, "kernel", jsKernel);
   REJECT_STATUS;
 
   napi_value jsBuildTime;
-  status = napi_create_double(env, c->totalTime / 1000000.0, &jsBuildTime);
+  c->status = napi_create_double(env, c->totalTime / 1000000.0, &jsBuildTime);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
+  c->status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
+  REJECT_STATUS;
+
+  napi_value svmValue;
+  if (c->svmCaps | CL_MEM_SVM_FINE_GRAIN_BUFFER) {
+    c->status = napi_create_string_utf8(env, "fine", NAPI_AUTO_LENGTH, &svmValue);
+  } else if (c->svmCaps | CL_DEVICE_SVM_COARSE_GRAIN_BUFFER) {
+    c->status = napi_create_string_utf8(env, "coarse", NAPI_AUTO_LENGTH, &svmValue);
+  } else {
+    c->status = napi_create_string_utf8(env, "none", NAPI_AUTO_LENGTH, &svmValue);
+  }
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "sharedMemType", svmValue);
+  REJECT_STATUS;
+
+  napi_value workGroupValue;
+  c->status = napi_create_int64(env, (int64_t) c->workGroupSize, &workGroupValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "workGroupSize", workGroupValue);
   REJECT_STATUS;
 
   napi_value createBufValue;
-  status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
+  c->status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
     createBuffer, nullptr, &createBufValue);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "createBuffer", createBufValue);
+  c->status = napi_set_named_property(env, result, "createBuffer", createBufValue);
   REJECT_STATUS;
 
   napi_value runValue;
-  status = napi_create_function(env, "run", NAPI_AUTO_LENGTH, run,
+  c->status = napi_create_function(env, "run", NAPI_AUTO_LENGTH, run,
     nullptr, &runValue);
   REJECT_STATUS;
-  status = napi_set_named_property(env, result, "run", runValue);
+  c->status = napi_set_named_property(env, result, "run", runValue);
   REJECT_STATUS;
 
+  napi_status status;
   status = napi_resolve_deferred(env, c->_deferred, result);
   FLOATING_STATUS;
 

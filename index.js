@@ -27,7 +27,16 @@ const kernel = `__kernel void square(
         output[i] = input[i] + 1;
 }`;
 
-console.log(addon.getPlatformNames());
+async function noden() {
+  let program = await addon.createProgram(kernel);
+  return await Promise.all([
+    program.createBuffer(65536*100),
+    program.createBuffer(65536*100)
+  ]);
+}
+noden().then(([i, o]) => { console.log(i.creationTime, o.creationTime); }, console.error);
+
+/* console.log(addon.getPlatformNames());
 console.log(addon.getDeviceNames(0));
 console.log(addon.getDeviceNames(1));
 
@@ -43,3 +52,4 @@ startTime = process.hrtime();
 let result = addon.runProgramSVM(clProgram, b);
 console.log("Program executed in", process.hrtime(startTime), "with", result.length, "value", b[0]);
 }
+*/

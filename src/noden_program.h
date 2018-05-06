@@ -37,6 +37,8 @@ struct buildCarrier : carrier {
   cl_kernel kernel;
   char* name;
   size_t nameLength;
+  cl_ulong svmCaps;
+  size_t workGroupSize;
 };
 
 napi_value createProgram(napi_env env, napi_callback_info info);

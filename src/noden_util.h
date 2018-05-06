@@ -61,6 +61,7 @@ napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
 #define NODEN_OUT_OF_RANGE 4097
 #define NODEN_ASYNC_FAILURE 4098
 #define NODEN_BUILD_ERROR 4099
+#define NODEN_ALLOCATION_FAILURE 4100
 #define NODEN_SUCCESS 0
 
 struct carrier {
@@ -79,7 +80,7 @@ int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line);
   c->status = error; \
   c->errorMsg = (char *) malloc(200); \
   sprintf(c->errorMsg, "In file %s line %d, got CL error %i of type %s.", \
-    __FILE__, __LINE__ - 4, error, clGetErrorString(error)); \
+    __FILE__, __LINE__ - 1, error, clGetErrorString(error)); \
   return; \
 }
 

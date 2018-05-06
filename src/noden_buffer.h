@@ -14,7 +14,7 @@
 */
 
 #ifndef NODEN_BUFFER_H
-#define NODEC_BUFFER_H
+#define NODEN_BUFFER_H
 
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
@@ -26,7 +26,17 @@
 #include "node_api.h"
 #include "noden_util.h"
 
+#define NODEN_SVM_FINE_CHAR 'f'
+#define NODEN_SVM_COARSE_CHAR 'c'
+#define NODEN_SVM_NONE_CHAR 'n'
+
 struct createBufCarrier : carrier {
+  char svmType[10] = "none";
+  void* data = nullptr;
+  size_t dataSize = 0;
+  size_t actualSize = 0;
+  cl_context context;
+  cl_command_queue commands;
 };
 
 // void createBufferExecute(napi_env env, void* data);
