@@ -26,6 +26,8 @@
 #include "noden_util.h"
 #include "noden_info.h"
 #include "noden_program.h"
+#include "noden_buffer.h"
+#include "noden_run.h"
 
 void tidyContext(napi_env env, void* data, void* hint) {
   printf("Context finalizer called.\n");
@@ -53,74 +55,6 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   cl_int error = CL_SUCCESS;
   error = clReleaseKernel((cl_kernel) data);
   if (error == CL_SUCCESS) printf("Failed to relase CL kernel.\n");
-}
-
-void createBufferExecute(napi_env env, void* data) {
-  createBufCarrier* c = (createBufCarrier*) data;
-}
-
-void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
-  createBufCarrier* c = (createBufCarrier*) data;
-
-  delete c;
-  napi_delete_async_work(env, c->_request);
-}
-
-napi_value createBuffer(napi_env env, napi_callback_info info) {
-  napi_status status;
-  createBufCarrier* c = new createBufCarrier;
-
-  napi_value thisValue;
-  status = napi_get_cb_info(env, info, 0, nullptr, &thisValue, nullptr);
-
-  bool hasProp;
-  status = napi_has_named_property(env, thisValue, "name", &hasProp);
-  CHECK_STATUS;
-  printf("I got called with hasProp %i\n", hasProp);
-
-  napi_value promise, resource_name;
-  status = napi_create_promise(env, &c->_deferred, &promise);
-  CHECK_STATUS;
-
-  status = napi_create_string_utf8(env, "CreateBuffer", NAPI_AUTO_LENGTH, &resource_name);
-  CHECK_STATUS;
-  status = napi_create_async_work(env, NULL, resource_name, createBufferExecute,
-    createBufferComplete, c, &c->_request);
-  CHECK_STATUS;
-  status = napi_queue_async_work(env, c->_request);
-  CHECK_STATUS;
-
-  return promise;
-}
-
-void runExecute(napi_env env, void* data) {
-  runCarrier* c = (runCarrier*) data;
-}
-
-void runComplete(napi_env env, napi_status asyncStatus, void* data) {
-  runCarrier* c = (runCarrier*) data;
-
-  delete c;
-  napi_delete_async_work(env, c->_request);
-}
-
-napi_value run(napi_env env, napi_callback_info info) {
-  napi_status status;
-  runCarrier* c = new runCarrier;
-
-  napi_value promise, resource_name;
-  status = napi_create_promise(env, &c->_deferred, &promise);
-  CHECK_STATUS;
-
-  status = napi_create_string_utf8(env, "Run", NAPI_AUTO_LENGTH, &resource_name);
-  CHECK_STATUS;
-  status = napi_create_async_work(env, NULL, resource_name, runExecute,
-    runComplete, c, &c->_request);
-  CHECK_STATUS;
-  status = napi_queue_async_work(env, c->_request);
-  CHECK_STATUS;
-
-  return promise;
 }
 
 // Promise to create a program with context and queue
@@ -179,7 +113,7 @@ void buildExecute(napi_env env, void* data) {
   c->kernel = clCreateKernel(c->program, c->name, &error);
   ASYNC_CL_ERROR;
 
-  c->buildTime = microTime(start);
+  c->totalTime = microTime(start);
 }
 
 void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -191,62 +125,65 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
     c->status = asyncStatus;
     c->errorMsg = "Async build of program failed to complete.";
   }
+  REJECT_STATUS;
 
-  if (c->status != NODEN_SUCCESS) {
-    napi_value errorValue, errorCode, errorMsg;
-    char errorChars[20];
-    status = napi_create_string_utf8(env, itoa(c->status, errorChars, 10),
-      NAPI_AUTO_LENGTH, &errorCode);
-    status = napi_create_string_utf8(env, c->errorMsg, NAPI_AUTO_LENGTH, &errorMsg);
-    status = napi_create_error(env, errorCode, errorMsg, &errorValue);
-    status = napi_reject_deferred(env, c->_deferred, errorValue);
-    napi_delete_reference(env, c->jsProgram);
-    delete(c);
-    napi_delete_async_work(env, c->_request);
-    return;
-  }
-
-  status = napi_get_reference_value(env, c->jsProgram, &result);
+  c->status = napi_get_reference_value(env, c->passthru, &result);
+  REJECT_STATUS;
 
   napi_value jsDeviceId;
   status = napi_create_external(env, c->deviceId, nullptr, nullptr, &jsDeviceId);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "deviceId", jsDeviceId);
+  REJECT_STATUS;
 
   napi_value jsContext;
   status = napi_create_external(env, c->context, tidyContext, nullptr, &jsContext);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "context", jsContext);
+  REJECT_STATUS;
 
   napi_value jsCommands;
   status = napi_create_external(env, c->commands, tidyQueue, nullptr, &jsCommands);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "commands", jsCommands);
+  REJECT_STATUS;
 
   napi_value jsExtProgram;
   status = napi_create_external(env, c->program, tidyProgram, nullptr, &jsExtProgram);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "program", jsExtProgram);
+  REJECT_STATUS;
 
   napi_value jsKernel;
   status = napi_create_external(env, c->program, tidyKernel, nullptr, &jsKernel);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "kernel", jsKernel);
+  REJECT_STATUS;
 
   napi_value jsBuildTime;
-  status = napi_create_double(env, c->buildTime / 1000000.0, &jsBuildTime);
+  status = napi_create_double(env, c->totalTime / 1000000.0, &jsBuildTime);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
+  REJECT_STATUS;
 
   napi_value createBufValue;
   status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
     createBuffer, nullptr, &createBufValue);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "createBuffer", createBufValue);
+  REJECT_STATUS;
 
   napi_value runValue;
   status = napi_create_function(env, "run", NAPI_AUTO_LENGTH, run,
     nullptr, &runValue);
+  REJECT_STATUS;
   status = napi_set_named_property(env, result, "run", runValue);
+  REJECT_STATUS;
 
   status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
 
-  napi_delete_reference(env, c->jsProgram);
-  delete(c);
-  napi_delete_async_work(env, c->_request);
+  tidyCarrier(env, c);
 }
 
 napi_value createProgram(napi_env env, napi_callback_info info) {
@@ -391,7 +328,7 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   status = napi_get_value_string_utf8(env, nameValue, carrier->name, carrier->nameLength + 1, nullptr);
   CHECK_STATUS;
 
-  status = napi_create_reference(env, program, 1, &carrier->jsProgram);
+  status = napi_create_reference(env, program, 1, &carrier->passthru);
   CHECK_STATUS;
 
   status = napi_create_promise(env, &carrier->_deferred, &promise);

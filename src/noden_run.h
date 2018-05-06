@@ -13,8 +13,8 @@
   limitations under the License.
 */
 
-#ifndef NODEN_PROGRAM_H
-#define NODEC_PROGRAM_H
+#ifndef NODEN_RUN_H
+#define NODEC_RUN_H
 
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
@@ -24,21 +24,13 @@
 #include <chrono>
 #include <stdio.h>
 #include "node_api.h"
+#include "noden_util.h"
 
-struct buildCarrier : carrier {
-  char* kernelSource;
-  size_t sourceLength;
-  uint32_t platformIndex;
-  uint32_t deviceIndex;
-  cl_device_id deviceId;
-  cl_context context;
-  cl_command_queue commands;
-  cl_program program;
-  cl_kernel kernel;
-  char* name;
-  size_t nameLength;
+struct runCarrier : carrier {
 };
 
-napi_value createProgram(napi_env env, napi_callback_info info);
+// void runExecute(napi_env env, void* data);
+// void runComplete(napi_env env, napi_status status, void* data);
+napi_value run(napi_env env, napi_callback_info info);
 
 #endif

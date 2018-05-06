@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <chrono>
+#include "noden_util.h"
 #include "node_api.h"
 
 napi_status checkStatus(napi_env env, napi_status status,
@@ -190,3 +191,36 @@ napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
 
   return napi_ok;
 };
+
+
+void tidyCarrier(napi_env env, carrier* c) {
+  napi_status status;
+  if (c->passthru != nullptr) {
+    status = napi_delete_reference(env, c->passthru);
+    FLOATING_STATUS;
+  }
+  status = napi_delete_async_work(env, c->_request);
+  FLOATING_STATUS;
+  delete c;
+}
+
+int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line) {
+  if (c->status != NODEN_SUCCESS) {
+    napi_value errorValue, errorCode, errorMsg;
+    napi_status status;
+    char errorChars[20];
+    char* extMsg = (char *) malloc(sizeof(char) * strlen(c->errorMsg) + 200);
+    sprintf(extMsg, "In file %s on line %i, found error: %s", file, line, c->errorMsg);
+    status = napi_create_string_utf8(env, itoa(c->status, errorChars, 10),
+      NAPI_AUTO_LENGTH, &errorCode);
+    FLOATING_STATUS;
+    status = napi_create_string_utf8(env, extMsg, NAPI_AUTO_LENGTH, &errorMsg);
+    FLOATING_STATUS;
+    status = napi_create_error(env, errorCode, errorMsg, &errorValue);
+    FLOATING_STATUS;
+    status = napi_reject_deferred(env, c->_deferred, errorValue);
+    FLOATING_STATUS;
+    tidyCarrier(env, c);
+  }
+  return c->status;
+}

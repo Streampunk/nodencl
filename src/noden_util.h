@@ -28,7 +28,7 @@
 #define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
 
 // Handling NAPI errors - use "napi_status status;" where used
-#define CHECK_STATUS if (checkStatus(env, status, __FILE__, __LINE__) != napi_ok) return nullptr
+#define CHECK_STATUS if (checkStatus(env, status, __FILE__, __LINE__ - 1) != napi_ok) return nullptr
 #define PASS_STATUS if (status != napi_ok) return status
 
 napi_status checkStatus(napi_env env, napi_status status,
@@ -56,5 +56,37 @@ long long microTime(std::chrono::high_resolution_clock::time_point start);
 // Argument processing
 napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
   napi_value* args, size_t argc, napi_valuetype* types);
+
+// Async error handling
+#define NODEN_OUT_OF_RANGE 4097
+#define NODEN_ASYNC_FAILURE 4098
+#define NODEN_BUILD_ERROR 4099
+#define NODEN_SUCCESS 0
+
+struct carrier {
+  napi_ref passthru = nullptr;
+  int32_t status = NODEN_SUCCESS;
+  char* errorMsg;
+  long long totalTime;
+  napi_deferred _deferred;
+  napi_async_work _request;
+};
+
+void tidyCarrier(napi_env env, carrier* c);
+int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line);
+
+#define ASYNC_CL_ERROR if (error != CL_SUCCESS) { \
+  c->status = error; \
+  c->errorMsg = (char *) malloc(200); \
+  sprintf(c->errorMsg, "In file %s line %d, got CL error %i of type %s.", \
+    __FILE__, __LINE__ - 4, error, clGetErrorString(error)); \
+  return; \
+}
+
+#define REJECT_STATUS if (rejectStatus(env, c, __FILE__, __LINE__) != NODEN_SUCCESS) return;
+#define FLOATING_STATUS if (status != napi_ok) { \
+  printf("Unexpected N-API status not OK in file %s at line %d value %i.\n", \
+    __FILE__, __LINE__ - 1, status); \
+}
 
 #endif // NODEN_UTIL_H
