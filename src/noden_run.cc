@@ -117,7 +117,7 @@ void runExecute(napi_env env, void* data) {
 void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   runCarrier* c = (runCarrier*) data;
 
-  printf("Run completed with status %i.\n", asyncStatus);
+  printf("Run completed with status %i in time %llu.\n", asyncStatus, c->totalTime);
 
   if (asyncStatus != napi_ok) {
     c->status = asyncStatus;
@@ -129,8 +129,11 @@ void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_create_object(env, &result);
   REJECT_STATUS;
 
-  delete c;
-  napi_delete_async_work(env, c->_request);
+  napi_status status;
+  status = napi_resolve_deferred(env, c->_deferred, result);
+
+
+  tidyCarrier(env, c);
 }
 
 napi_value run(napi_env env, napi_callback_info info) {
@@ -141,6 +144,72 @@ napi_value run(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value programValue;
   status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
+  CHECK_STATUS;
+
+  if (argc != 2) {
+    status = napi_throw_error(env, nullptr, "Wrong number of arguments. Two expected.");
+    return nullptr;
+  }
+
+  bool isBuffer;
+  status = napi_is_buffer(env, args[0], &isBuffer);
+  CHECK_STATUS;
+  if (!isBuffer) {
+    status = napi_throw_type_error(env, nullptr, "First argument must be the input buffer.");
+    return nullptr;
+  }
+
+  status = napi_is_buffer(env, args[1], &isBuffer);
+  CHECK_STATUS;
+  if (!isBuffer) {
+    status = napi_throw_type_error(env, nullptr, "Seconds argument must be the output buffer.");
+    return nullptr;
+  }
+
+  bool hasProp;
+  status = napi_has_named_property(env, args[0], "dataSize", &hasProp);
+  CHECK_STATUS;
+  if (!hasProp) {
+    status = napi_throw_type_error(env, nullptr, "Input buffer must have been created by the program's create buffer.");
+    return nullptr;
+  }
+
+  status = napi_has_named_property(env, args[1], "dataSize", &hasProp);
+  CHECK_STATUS;
+  if (!hasProp) {
+    status = napi_throw_type_error(env, nullptr, "Output buffer must have been created by the program's create buffer.");
+    return nullptr;
+  }
+
+  napi_value inputSizeValue;
+  status = napi_get_named_property(env, args[0], "dataSize", &inputSizeValue);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, inputSizeValue, &c->inputSize);
+  CHECK_STATUS;
+
+  napi_value inputTypeValue;
+  status = napi_get_named_property(env, args[0], "sharedMemType", &inputTypeValue);
+  CHECK_STATUS;
+  status = napi_get_value_string_utf8(env, inputTypeValue, c->inputType, 10, nullptr);
+  CHECK_STATUS;
+
+  napi_value outputSizeValue;
+  status = napi_get_named_property(env, args[1], "dataSize", &outputSizeValue);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, outputSizeValue, &c->outputSize);
+  CHECK_STATUS;
+
+  napi_value outputTypeValue;
+  status = napi_get_named_property(env, args[1], "sharedMemType", &outputTypeValue);
+  CHECK_STATUS;
+  status = napi_get_value_string_utf8(env, outputTypeValue, c->outputType, 10, nullptr);
+  CHECK_STATUS;
+
+  size_t length;
+  status = napi_get_buffer_info(env, args[0], &c->input, &length);
+  CHECK_STATUS;
+
+  status = napi_get_buffer_info(env, args[1], &c->output, &length);
   CHECK_STATUS;
 
   // Extract externals into variables

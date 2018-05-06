@@ -29,10 +29,18 @@ const kernel = `__kernel void square(
 
 async function noden() {
   let program = await addon.createProgram(kernel);
-  return await Promise.all([
+  let [i, o] = await Promise.all([
     program.createBuffer(65536*100),
     program.createBuffer(65536*100)
   ]);
+  i.fill(42);
+  console.log(i);
+  for ( let x = 0 ; x < 1000 ; x++ ) {
+    await program.run(i, o);
+    [o, i] = [i, o];
+  }
+  console.log(o);
+  return [i, o];
 }
 noden().then(([i, o]) => { console.log(i.creationTime, o.creationTime); }, console.error);
 

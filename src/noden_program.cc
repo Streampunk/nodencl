@@ -166,7 +166,7 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   REJECT_STATUS;
 
   napi_value jsKernel;
-  c->status = napi_create_external(env, c->program, tidyKernel, nullptr, &jsKernel);
+  c->status = napi_create_external(env, c->kernel, tidyKernel, nullptr, &jsKernel);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "kernel", jsKernel);
   REJECT_STATUS;
