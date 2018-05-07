@@ -35,17 +35,17 @@ void runExecute(napi_env env, void* data) {
   HR_TIME_POINT bufAlloc = NOW;
   // Not recording buffer create time - should probably be done once, before here
   if (c->inputType[0] == NODEN_SVM_NONE_CHAR) {
-    input = clCreateBuffer(c->context, CL_MEM_READ_ONLY, c->inputSize,
-      nullptr, &error);
+    input = clCreateBuffer(c->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
+      c->inputSize, nullptr, &error);
     ASYNC_CL_ERROR;
   }
   if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
-    output = clCreateBuffer(c->context, CL_MEM_WRITE_ONLY, c->outputSize,
-      nullptr, &error);
+    output = clCreateBuffer(c->context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR,
+      c->outputSize, nullptr, &error);
     ASYNC_CL_ERROR;
   }
 
-  printf("Took %lluus to create GPU buffers.\n", microTime(bufAlloc));
+  // printf("Took %lluus to create GPU buffers.\n", microTime(bufAlloc));
 
   HR_TIME_POINT start = NOW;
   HR_TIME_POINT dataToKernelStart = start;
@@ -112,6 +112,15 @@ void runExecute(napi_env env, void* data) {
   c->dataFromKernel = microTime(dataFromKernelStart);
 
   c->totalTime = microTime(start);
+
+  if (c->inputType[0] == NODEN_SVM_NONE_CHAR) {
+    error = clReleaseMemObject(input);
+    ASYNC_CL_ERROR;
+  }
+  if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
+    error = clReleaseMemObject(output);
+    ASYNC_CL_ERROR;
+  }
 }
 
 void runComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -129,9 +138,32 @@ void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_create_object(env, &result);
   REJECT_STATUS;
 
+  napi_value totalValue;
+  c->status = napi_create_int64(env, (int64_t) c->totalTime, &totalValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "totalTime", totalValue);
+  REJECT_STATUS;
+
+  napi_value dataToValue;
+  c->status = napi_create_int64(env, (int64_t) c->dataToKernel, &dataToValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "dataToKernel", dataToValue);
+  REJECT_STATUS;
+
+  napi_value kernelExecValue;
+  c->status = napi_create_int64(env, (int64_t) c->kernelExec, &kernelExecValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "kernelExec", kernelExecValue);
+  REJECT_STATUS;
+
+  napi_value dataFromValue;
+  c->status = napi_create_int64(env, (int64_t) c->dataFromKernel, &dataFromValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "dataFromKernel", dataFromValue);
+  REJECT_STATUS;
+
   napi_status status;
   status = napi_resolve_deferred(env, c->_deferred, result);
-
 
   tidyCarrier(env, c);
 }

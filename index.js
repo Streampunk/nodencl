@@ -24,25 +24,36 @@ const kernel = `__kernel void square(
 
     int i = get_global_id(0);
     if (i < count)
-        output[i] = input[i] + 1;
+        output[i] = input[i] * 3;
 }`;
 
 async function noden() {
   let program = await addon.createProgram(kernel);
   let [i, o] = await Promise.all([
-    program.createBuffer(65536*100),
-    program.createBuffer(65536*100)
+    program.createBuffer(20736000, 'none'),
+    program.createBuffer(20736000, 'none')
   ]);
   i.fill(42);
   console.log(i);
   for ( let x = 0 ; x < 1000 ; x++ ) {
-    await program.run(i, o);
+    let timings = await program.run(i, o);
+    console.log(timings);
     [o, i] = [i, o];
   }
   console.log(o);
   return [i, o];
 }
 noden().then(([i, o]) => { console.log(i.creationTime, o.creationTime); }, console.error);
+
+/* let b = Buffer.alloc(65536*100);
+b.fill(42);
+let start = process.hrtime();
+for ( let c = 0 ; c < 10 ; c++ ) {
+for ( let x = 0 ; x < b.length ; x++) {
+  b[x] = b[x] * b[x];
+}
+}
+console.log(process.hrtime(start)); */
 
 /* console.log(addon.getPlatformNames());
 console.log(addon.getDeviceNames(0));
