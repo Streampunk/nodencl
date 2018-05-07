@@ -126,8 +126,6 @@ void runExecute(napi_env env, void* data) {
 void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   runCarrier* c = (runCarrier*) data;
 
-  printf("Run completed with status %i in time %llu.\n", asyncStatus, c->totalTime);
-
   if (asyncStatus != napi_ok) {
     c->status = asyncStatus;
     c->errorMsg = "Async run of program failed to complete.";

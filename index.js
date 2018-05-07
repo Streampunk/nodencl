@@ -24,20 +24,20 @@ const kernel = `__kernel void square(
 
     int i = get_global_id(0);
     if (i < count)
-        output[i] = input[i] * 3;
+        output[i] = input[i] - i % 7;
 }`;
 
 async function noden() {
   let program = await addon.createProgram(kernel);
   let [i, o] = await Promise.all([
-    program.createBuffer(20736000, 'none'),
-    program.createBuffer(20736000, 'none')
+    program.createBuffer(+process.argv[2], process.argv[3]),
+    program.createBuffer(+process.argv[2], process.argv[3])
   ]);
   i.fill(42);
   console.log(i);
   for ( let x = 0 ; x < 1000 ; x++ ) {
     let timings = await program.run(i, o);
-    console.log(timings);
+    console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
     [o, i] = [i, o];
   }
   console.log(o);
