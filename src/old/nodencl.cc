@@ -765,7 +765,7 @@ napi_value RunProgramSVM(napi_env env, napi_callback_info info) {
   printf("create = %lld, write = %lld, kernel = %lld, read = %lld, free = %lld, total = %lld\n",
     createBufMS, writeBufMS, kernelMS, readBufMS, freeMS, createBufMS + writeBufMS + kernelMS + readBufMS + freeMS);
   return args[1];
-} 
+}
 
 #define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
 
