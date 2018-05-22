@@ -2,12 +2,6 @@
   "name": "nodencl",
   "version": "0.0.2",
   "description": "Experimental library for executing Open-CL kernels over Node.JS buffers.",
-  "keywords": [
-    "OpenCL",
-    "OpenCL 2.0"
-    "GPU",
-    "promise"
-  ],
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
