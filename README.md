@@ -128,7 +128,7 @@ let progPromise = nodencl.createProgram(kernel);
 progPromise.then(..., console.error);
 ```
 
-The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. In this default mode with no options, the first device on the system that is of type GPU is selected. This can also be determined by calling the `nodecln.findFirstGPU()` function.
+The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. In this default mode with no options, the first device on the system that is of type GPU is selected. This can also be determined by calling the `nodencl.findFirstGPU()` function.
 
 To select a specific device or to explicitly name the function in the kernel code that is the entry point for the kernel (e.g. `square` in the example above), options can be provided as the second argument to `createProgram`. The options must include a numerical `platformIndex` and `deviceIndex` which are the indexes into the array of platform details and the `devices` property of each platform as returned by `getPlatformInfo()`. The `name` property gives the name of the kernel entry point function. For example:
 
@@ -140,7 +140,61 @@ progPromise.then(..., console.error);
 
 ### Creating data buffers
 
+OpenCL buffers allow data to be exchanged between the Node.JS program and the execution context of the Open CL kernel, managing either the transfer of data between system RAM and graphics RAM or the sharing of virtual memory between devices. Once created, the data buffer is wrapped in a Node.JS Buffer object that can be used like any other. When the OpenCL program is executed, nodencl takes care of passing the data to and from kernel device.
+
+To create a data buffer, use the `createBuffer()` method of the program object returned by `createProgram()`. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
+
+```Javascript
+let inputBuffer = await program.createBuffer(65536);
+let outputBuffer = await program.createBuffer(9000, 'fine');
+```
+
+... or to execute in parallel ...
+
+```Javascript
+let [inputBuffer, outuputBuffer] = await Promise.all([
+  program.createBuffer(65536),
+  program.createBuffer(9000, 'fine')
+]);
+```
+
+The first argument is the size of the buffer in bytes. Internally, a slightly larger buffer may be allocated to be divisible by the kernel workgroup size, although that detail is not exposed into Javascript.
+
+The second optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). The default value when this argument is not present is to choose the best kind of memory supported by the device.
+
+Note that further development of the API is intended to add support for Javascript typed arrays.
+
 ### Execute the kernel
+
+To run the program having created a program, created the input and output data buffers and set the values of the input buffer as required, call the program object's `run()` method. The first argument is the inputs and the second argument is the outputs. This returns a promise that resolves to an object containing timing measurements for the execution. For example, in the body if an ES6 _async_ function:
+
+```Javascript
+let execTimings = await program.run(inputBuffer, outputBuffer);
+console.log(JSON.stringify(execTimings, null, 2));
+```
+
+An example output of the above code fragment is:
+
+```JSON
+{
+  "totalTime": 1466,
+  "dataToKernel": 605,
+  "kernelExec": 202,
+  "dataFromKernel": 659
+}
+```
+
+The results are measurements in microseconds for the total time (`totalTime`) taken to run the program, the time taken to move data to the kernel (`dataToKernel`), the time taken to execute the kernel (`kernelExec`) and the time taken to make the result available in system memory (`dataFromKernel`). On resolution of the promise, the output buffer will contain the result of the execution.
+
+Note that the execution model is currently limited to a single input and single output buffer. The intention is to add support for input and output objects with names parameters that can be matched with the function parameters of the kernel entry point function. Note also that the size of the input buffer is passed as the `count` parameter into the kernel.
+
+### Measuring Performance
+
+A simple test script that moves blocks of memory of a given size to and from the system memory and GPU memory, executing an example kernel process between, is provided as script `[measureWriteExecRead.js](scratch/measureWriteExecRead.js)`. To run the script:
+
+    node scratch/measureWriteExecRead.js <buffer_size> <svm_type>
+
+The `buffer_size` is a number of bytes to simulate. The `svm_type` is one of: `none` for no shared virtual memory, `coarse` for coarse-grained shared virtual memory (where supported), `fine` for fine-grained shared virtual memory (where supported). Some results of running this script for common video payload sizes are available in the `[results](results/)` folder.
 
 ## Status, support and further development
 
@@ -148,9 +202,9 @@ Contributions can be made via pull requests and will be considered by the author
 
 Next steps include:
 
-* a flexible approach to attaching multiple arguments;
+* a flexible approach to attaching multiple kernel input parameters;
 * support for numerical data types other than Uint8 via Javascript typed arrays;
-* consideration of how to use pipelines;
+* consideration of how to use OpenCL pipelines;
 * control of how work is split up into threads;
 * adding support for OpenCL SDKs from nVidia and AMD;
 * adding support for linux and Mac platforms.
