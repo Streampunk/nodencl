@@ -183,16 +183,16 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   }
   c->actualSize = (size_t) paramSize;
 
-  napi_value workGroupValue;
-  uint32_t workGroupSize;
-  status = napi_get_named_property(env, programValue, "workGroupSize", &workGroupValue);
+  napi_value workItemsPerGroupValue;
+  size_t workItemsPerGroup;
+  status = napi_get_named_property(env, programValue, "workItemsPerGroup", &workItemsPerGroupValue);
   CHECK_STATUS;
-  status = napi_get_value_uint32(env, workGroupValue, &workGroupSize);
+  status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&workItemsPerGroup);
   CHECK_STATUS;
-  c->dataSize = (size_t) (((uint32_t) ((c->actualSize - 1) / workGroupSize)) + 1) * workGroupSize;
-  printf("Actual size %zi data size %zi work group size %i.\n",
-    c->actualSize, c->dataSize, workGroupSize);
-
+  c->dataSize = (((c->actualSize - 1) / workItemsPerGroup) + 1) * workItemsPerGroup;
+  printf("Actual size %zi data size %zi work items per group %zi.\n",
+    c->actualSize, c->dataSize, workItemsPerGroup);
+  
   napi_value bufTypeValue;
   if (argc == 2) {
     status = napi_typeof(env, args[1], &t);

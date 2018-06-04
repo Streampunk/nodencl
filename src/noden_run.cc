@@ -77,16 +77,15 @@ void runExecute(napi_env env, void* data) {
     error = clSetKernelArg(c->kernel, 1, sizeof(cl_mem), &output);
     ASYNC_CL_ERROR;
   }
-  error = clSetKernelArg(c->kernel, 2, sizeof(unsigned int), &c->inputSize);
-  ASYNC_CL_ERROR;
+  // error = clSetKernelArg(c->kernel, 2, sizeof(unsigned int), &c->inputSize);
+  // ASYNC_CL_ERROR;
 
   c->dataToKernel = microTime(dataToKernelStart);
   HR_TIME_POINT kernelExecStart = NOW;
 
-  size_t local = c->workGroupSize;
-  size_t global = (size_t) c->inputSize;
-  error = clEnqueueNDRangeKernel(c->commands, c->kernel, 1, nullptr, &global, &local,
-    0, nullptr, nullptr);
+  size_t global = (0 == c->globalWorkItems) ? (size_t) c->inputSize : c->globalWorkItems;
+  size_t local = c->workItemsPerGroup;
+  error = clEnqueueNDRangeKernel(c->commands, c->kernel, 1, nullptr, &global, &local, 0, nullptr, nullptr);
   ASYNC_CL_ERROR;
 
   error = clFinish(c->commands);
@@ -267,10 +266,16 @@ napi_value run(napi_env env, napi_callback_info info) {
   c->kernel = (cl_kernel) kernelData;
   CHECK_STATUS;
 
-  napi_value workGroupValue;
-  status = napi_get_named_property(env, programValue, "workGroupSize", &workGroupValue);
+  napi_value globalWorkItemsValue;
+  status = napi_get_named_property(env, programValue, "globalWorkItems", &globalWorkItemsValue);
   CHECK_STATUS;
-  status = napi_get_value_uint32(env, workGroupValue, &c->workGroupSize);
+  status = napi_get_value_int64(env, globalWorkItemsValue, (int64_t*)&c->globalWorkItems);
+  CHECK_STATUS;
+
+  napi_value workItemsPerGroupValue;
+  status = napi_get_named_property(env, programValue, "workItemsPerGroup", &workItemsPerGroupValue);
+  CHECK_STATUS;
+  status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&c->workItemsPerGroup);
   CHECK_STATUS;
 
   status = napi_create_reference(env, programValue, 1, &c->passthru);

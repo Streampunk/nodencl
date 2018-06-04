@@ -63,6 +63,7 @@ void buildExecute(napi_env env, void* data) {
   cl_int error;
 
   printf("Execution starting\n");
+  printf("globalWorkItems: %zd, workItemsPerGroup: %zd\n", c->globalWorkItems, c->workItemsPerGroup);
   HR_TIME_POINT start = NOW;
 
   std::vector<cl_platform_id> platformIds;
@@ -121,9 +122,20 @@ void buildExecute(napi_env env, void* data) {
   c->kernel = clCreateKernel(c->program, c->name, &error);
   ASYNC_CL_ERROR;
 
+  size_t deviceWorkGroupSize;
   error = clGetKernelWorkGroupInfo(c->kernel, c->deviceId, CL_KERNEL_WORK_GROUP_SIZE,
-    sizeof(size_t), &c->workGroupSize, nullptr);
+    sizeof(size_t), &deviceWorkGroupSize, nullptr);
   ASYNC_CL_ERROR;
+
+  if (0 == c->workItemsPerGroup)
+    c->workItemsPerGroup = deviceWorkGroupSize;
+  else if (c->workItemsPerGroup > deviceWorkGroupSize) {
+    c->status = NODEN_OUT_OF_RANGE;
+    c->errorMsg = (char *) malloc(200);
+    sprintf(c->errorMsg, "Property workItemsPerGroup (%zd) is larger than the available workgroup size (%zd) for platform %i.",
+            c->workItemsPerGroup, deviceWorkGroupSize, c->platformIndex);
+    return;
+  }
 
   c->totalTime = microTime(start);
 }
@@ -189,10 +201,16 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "sharedMemType", svmValue);
   REJECT_STATUS;
 
-  napi_value workGroupValue;
-  c->status = napi_create_int64(env, (int64_t) c->workGroupSize, &workGroupValue);
+  napi_value globalWorkItemsValue;
+  c->status = napi_create_int64(env, (int64_t) c->globalWorkItems, &globalWorkItemsValue);
   REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "workGroupSize", workGroupValue);
+  c->status = napi_set_named_property(env, result, "globalWorkItems", globalWorkItemsValue);
+  REJECT_STATUS;
+
+  napi_value workItemsPerGroupValue;
+  c->status = napi_create_int64(env, (int64_t) c->workItemsPerGroup, &workItemsPerGroupValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "workItemsPerGroup", workItemsPerGroupValue);
   REJECT_STATUS;
 
   napi_value createBufValue;
@@ -356,6 +374,36 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
   carrier->name = (char *) malloc(carrier->nameLength + 1);
   status = napi_get_value_string_utf8(env, nameValue, carrier->name, carrier->nameLength + 1, nullptr);
+  CHECK_STATUS;
+
+  napi_value globalWorkItemsValue;
+  status = napi_has_named_property(env, config, "globalWorkItems", &hasProp);
+  CHECK_STATUS;
+  if (hasProp) {
+    status = napi_get_named_property(env, config, "globalWorkItems", &globalWorkItemsValue);
+    CHECK_STATUS;
+  } else {
+    status = napi_create_int64(env, 0, &globalWorkItemsValue);
+    CHECK_STATUS;
+  }
+  status = napi_get_value_int64(env, globalWorkItemsValue, (int64_t*)&carrier->globalWorkItems);
+  CHECK_STATUS;
+  status = napi_set_named_property(env, program, "globalWorkItems", globalWorkItemsValue);
+  CHECK_STATUS;
+
+  napi_value workItemsPerGroupValue;
+  status = napi_has_named_property(env, config, "workItemsPerGroup", &hasProp);
+  CHECK_STATUS;
+  if (hasProp) {
+    status = napi_get_named_property(env, config, "workItemsPerGroup", &workItemsPerGroupValue);
+    CHECK_STATUS;
+  } else {
+    status = napi_create_int64(env, 0, &workItemsPerGroupValue);
+    CHECK_STATUS;
+  }
+  status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&carrier->workItemsPerGroup);
+  CHECK_STATUS;
+  status = napi_set_named_property(env, program, "workItemsPerGroup", workItemsPerGroupValue);
   CHECK_STATUS;
 
   status = napi_create_reference(env, program, 1, &carrier->passthru);

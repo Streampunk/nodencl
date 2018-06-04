@@ -33,7 +33,8 @@ struct runCarrier : carrier {
   void* output;
   char outputType[10] = "none";
   uint32_t outputSize;
-  uint32_t workGroupSize;
+  size_t globalWorkItems;
+  size_t workItemsPerGroup;
   long long dataToKernel;
   long long kernelExec;
   long long dataFromKernel;

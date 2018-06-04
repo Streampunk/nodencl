@@ -11,7 +11,8 @@ CLProgram {
   commands: [external],
   kernel: [external],
   program: [external],
-  kernelWorkGroupSize: 256,
+  globalWorkItems: 32768,
+  workItemsPerGroup: 64,
   createBuffer(size, type), // type is copy, svm coarse, svm fine
   run(inputs, outputs) // either values or arrays
 };
