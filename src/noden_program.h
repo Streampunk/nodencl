@@ -26,7 +26,7 @@
 #include "node_api.h"
 
 struct buildCarrier : carrier {
-  char* kernelSource;
+  std::string kernelSource;
   size_t sourceLength;
   uint32_t platformIndex;
   uint32_t deviceIndex;
@@ -35,7 +35,7 @@ struct buildCarrier : carrier {
   cl_command_queue commands;
   cl_program program;
   cl_kernel kernel;
-  char* name;
+  std::string name;
   size_t nameLength;
   cl_ulong svmCaps;
   size_t globalWorkItems;

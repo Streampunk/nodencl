@@ -31,6 +31,7 @@
 #define NODEN_SVM_NONE_CHAR 'n'
 
 struct createBufCarrier : carrier {
+  bool isInput = true;
   char svmType[10] = "none";
   void* data = nullptr;
   size_t dataSize = 0;

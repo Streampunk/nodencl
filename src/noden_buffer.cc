@@ -142,6 +142,12 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "sharedMemType", svmTypeValue);
   REJECT_STATUS;
 
+  napi_value bufDirValue;
+  c->status = napi_get_boolean(env, c->isInput, &bufDirValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "isInput", bufDirValue);
+  REJECT_STATUS;
+
   napi_status status;
   status = napi_resolve_deferred(env, c->_deferred, result);
   FLOATING_STATUS;
@@ -153,13 +159,13 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   napi_status status;
   createBufCarrier* c = new createBufCarrier;
 
-  napi_value args[2];
-  size_t argc = 2;
+  napi_value args[3];
+  size_t argc = 3;
   napi_value programValue;
   status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
   CHECK_STATUS;
 
-  if (argc < 1 || argc > 2) {
+  if (argc < 1 || argc > 3) {
     status = napi_throw_error(env, nullptr, "Wrong number of arguments to create buffer.");
     delete c;
     return nullptr;
@@ -194,8 +200,9 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
     c->actualSize, c->dataSize, workItemsPerGroup);
   
   napi_value bufTypeValue;
-  if (argc == 2) {
+  if (argc >= 2) {
     status = napi_typeof(env, args[1], &t);
+    CHECK_STATUS;
     if (t != napi_string) {
       status = napi_throw_type_error(env, nullptr, "Second argument must be a string - the buffer type.");
       delete c;
@@ -208,6 +215,23 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   }
   status = napi_get_value_string_utf8(env, bufTypeValue, c->svmType, 10, nullptr);
   CHECK_STATUS;
+
+  napi_value bufDirValue;
+  if (argc == 3) {
+    napi_valuetype t;
+    status = napi_typeof(env, args[2], &t);
+    CHECK_STATUS;
+    if (t != napi_string) {
+      status = napi_throw_type_error(env, nullptr, "Third argument must be a string - the buffer direction.");
+      delete c;
+      return nullptr;
+    }
+    bufDirValue = args[2];
+    char bufDir[10];
+    status = napi_get_value_string_utf8(env, bufDirValue, bufDir, 10, nullptr);
+    CHECK_STATUS;
+    c->isInput = 0==strcmp("in", bufDir);
+  }
 
   if ((strcmp(c->svmType, "fine") != 0) &&
     (strcmp(c->svmType, "coarse") != 0) &&

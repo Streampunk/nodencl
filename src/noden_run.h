@@ -23,16 +23,29 @@
 #endif
 #include <chrono>
 #include <stdio.h>
+#include <map>
 #include "node_api.h"
 #include "noden_util.h"
 
+struct kernelParam {
+  std::string name;
+  std::string type;
+  bool isBuf;
+  union {
+    uint32_t uint32;
+    int32_t int32;
+    int64_t int64;
+    double dbl;
+    void* ptr;
+  } value;
+  uint32_t bufSize;
+  char bufType = 'n';
+  bool bufIsInput;
+  cl_mem buffer;
+};
+
 struct runCarrier : carrier {
-  void* input;
-  char inputType[10] = "none";
-  uint32_t inputSize;
-  void* output;
-  char outputType[10] = "none";
-  uint32_t outputSize;
+  std::map<uint32_t, kernelParam*> kernelParams;
   size_t globalWorkItems;
   size_t workItemsPerGroup;
   long long dataToKernel;

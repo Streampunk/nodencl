@@ -14,7 +14,7 @@ CLProgram {
   globalWorkItems: 32768,
   workItemsPerGroup: 64,
   createBuffer(size, type), // type is copy, svm coarse, svm fine
-  run(inputs, outputs) // either values or arrays
+  run({input: inputs, output: outputs}) // either values or arrays
 };
 
 createBuffer(size) => Promise => a (mapped) buffer and parameters

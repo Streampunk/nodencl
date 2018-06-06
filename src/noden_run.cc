@@ -29,61 +29,79 @@
 void runExecute(napi_env env, void* data) {
   runCarrier* c = (runCarrier*) data;
   cl_int error;
-  cl_mem input;
-  cl_mem output;
+  size_t inputSize = 0;
 
   HR_TIME_POINT bufAlloc = NOW;
   // Not recording buffer create time - should probably be done once, before here
-  if (c->inputType[0] == NODEN_SVM_NONE_CHAR) {
-    input = clCreateBuffer(c->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
-      c->inputSize, nullptr, &error);
-    ASYNC_CL_ERROR;
-  }
-  if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
-    output = clCreateBuffer(c->context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR,
-      c->outputSize, nullptr, &error);
-    ASYNC_CL_ERROR;
+
+  for (auto& paramIter: c->kernelParams) {
+    uint32_t p = paramIter.first;
+    kernelParam* param = paramIter.second;
+    if (param->isBuf) {
+      if (NODEN_SVM_NONE_CHAR == param->bufType) {
+        param->buffer = clCreateBuffer(c->context, (param->bufIsInput?CL_MEM_READ_ONLY:CL_MEM_WRITE_ONLY) | CL_MEM_ALLOC_HOST_PTR,
+          param->bufSize, nullptr, &error);
+        ASYNC_CL_ERROR;
+      }
+      if (!inputSize && param->bufIsInput)
+        inputSize = (size_t)param->bufSize;
+    }
   }
 
   // printf("Took %lluus to create GPU buffers.\n", microTime(bufAlloc));
-
   HR_TIME_POINT start = NOW;
   HR_TIME_POINT dataToKernelStart = start;
 
-  if (c->inputType[0] == NODEN_SVM_COARSE_CHAR) {
-    error = clEnqueueSVMUnmap(c->commands, c->input, 0, 0, 0);
-    ASYNC_CL_ERROR;
-  }
-  if (c->outputType[0] == NODEN_SVM_COARSE_CHAR) {
-    error = clEnqueueSVMUnmap(c->commands, c->output, 0, 0, 0);
-    ASYNC_CL_ERROR;
+  for (auto& paramIter: c->kernelParams) {
+    uint32_t p = paramIter.first;
+    kernelParam* param = paramIter.second;
+    if (param->isBuf) {
+      if (NODEN_SVM_COARSE_CHAR == param->bufType) {
+        error = clEnqueueSVMUnmap(c->commands, param->value.ptr, 0, 0, 0);
+        ASYNC_CL_ERROR;
+      }
+
+      if (NODEN_SVM_NONE_CHAR != param->bufType) {
+        error = clSetKernelArgSVMPointer(c->kernel, p, param->value.ptr);
+        ASYNC_CL_ERROR;
+      } else {
+        if (param->bufIsInput) {
+          error = clEnqueueWriteBuffer(c->commands, param->buffer, CL_TRUE, 0, param->bufSize,
+            param->value.ptr, 0, nullptr, nullptr);
+          ASYNC_CL_ERROR;
+        }
+        error = clSetKernelArg(c->kernel, p, sizeof(cl_mem), &param->buffer);
+        ASYNC_CL_ERROR;
+      }
+    }
   }
 
-  if (c->inputType[0] != NODEN_SVM_NONE_CHAR) {
-    error = clSetKernelArgSVMPointer(c->kernel, 0, c->input);
-    ASYNC_CL_ERROR;
-  } else {
-    error = clEnqueueWriteBuffer(c->commands, input, CL_TRUE, 0, c->inputSize,
-      c->input, 0, nullptr, nullptr);
-    ASYNC_CL_ERROR;
-    error = clSetKernelArg(c->kernel, 0, sizeof(cl_mem), &input);
-    ASYNC_CL_ERROR;
+  for (auto& paramIter: c->kernelParams) {
+    uint32_t p = paramIter.first;
+    kernelParam* param = paramIter.second;
+    if (0 == param->type.compare("uint")) {
+      error = clSetKernelArg(c->kernel, p, sizeof(uint32_t), &param->value.uint32);
+      ASYNC_CL_ERROR;
+    } else if (0 == param->type.compare("int")) {
+      error = clSetKernelArg(c->kernel, p, sizeof(int32_t), &param->value.int32);
+      ASYNC_CL_ERROR;
+    } else if (0 == param->type.compare("long")) {
+      error = clSetKernelArg(c->kernel, p, sizeof(int64_t), &param->value.int64);
+      ASYNC_CL_ERROR;
+    } else if (0 == param->type.compare("float")) {
+      error = clSetKernelArg(c->kernel, p, sizeof(float), &param->value.dbl);
+      ASYNC_CL_ERROR;
+    } else if (0 == param->type.compare("double")) {
+      error = clSetKernelArg(c->kernel, p, sizeof(double), &param->value.dbl);
+      ASYNC_CL_ERROR;
+    }
+    ++p;
   }
-
-  if (c->outputType[0] != NODEN_SVM_NONE_CHAR) {
-    error = clSetKernelArgSVMPointer(c->kernel, 1, c->output);
-    ASYNC_CL_ERROR;
-  } else {
-    error = clSetKernelArg(c->kernel, 1, sizeof(cl_mem), &output);
-    ASYNC_CL_ERROR;
-  }
-  // error = clSetKernelArg(c->kernel, 2, sizeof(unsigned int), &c->inputSize);
-  // ASYNC_CL_ERROR;
 
   c->dataToKernel = microTime(dataToKernelStart);
   HR_TIME_POINT kernelExecStart = NOW;
 
-  size_t global = (0 == c->globalWorkItems) ? (size_t) c->inputSize : c->globalWorkItems;
+  size_t global = (0 == c->globalWorkItems) ? inputSize : c->globalWorkItems;
   size_t local = c->workItemsPerGroup;
   error = clEnqueueNDRangeKernel(c->commands, c->kernel, 1, nullptr, &global, &local, 0, nullptr, nullptr);
   ASYNC_CL_ERROR;
@@ -94,31 +112,31 @@ void runExecute(napi_env env, void* data) {
   c->kernelExec = microTime(kernelExecStart);
   HR_TIME_POINT dataFromKernelStart = NOW;
 
-  if (c->inputType[0] == NODEN_SVM_COARSE_CHAR) {
-    error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, c->input, c->inputSize, 0, 0, 0);
-    ASYNC_CL_ERROR;
-  }
-  if (c->outputType[0] == NODEN_SVM_COARSE_CHAR) {
-    error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, c->output, c->outputSize, 0, 0, 0);
-    ASYNC_CL_ERROR;
+  for (auto& paramIter: c->kernelParams) {
+    kernelParam* param = paramIter.second;
+    if (param->isBuf) {
+      if (NODEN_SVM_COARSE_CHAR == param->bufType) {
+        error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, param->value.ptr, param->bufSize, 0, 0, 0);
+        ASYNC_CL_ERROR;
+      }
+
+      if (!param->bufIsInput && (NODEN_SVM_NONE_CHAR == param->bufType)) {
+        error = clEnqueueReadBuffer(c->commands, param->buffer, CL_TRUE, 0,
+          param->bufSize, param->value.ptr, 0, nullptr, nullptr);
+        ASYNC_CL_ERROR;
+      }
+    }
   }
 
-  if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
-    error = clEnqueueReadBuffer(c->commands, output, CL_TRUE, 0,
-      c->outputSize, c->output, 0, nullptr, nullptr);
-    ASYNC_CL_ERROR;
-  }
   c->dataFromKernel = microTime(dataFromKernelStart);
-
   c->totalTime = microTime(start);
 
-  if (c->inputType[0] == NODEN_SVM_NONE_CHAR) {
-    error = clReleaseMemObject(input);
-    ASYNC_CL_ERROR;
-  }
-  if (c->outputType[0] == NODEN_SVM_NONE_CHAR) {
-    error = clReleaseMemObject(output);
-    ASYNC_CL_ERROR;
+  for (auto& paramIter: c->kernelParams) {
+    kernelParam* param = paramIter.second;
+    if (param->isBuf && (NODEN_SVM_NONE_CHAR == param->bufType)) {
+      error = clReleaseMemObject(param->buffer);
+      ASYNC_CL_ERROR;
+    }
   }
 }
 
@@ -162,6 +180,8 @@ void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   napi_status status;
   status = napi_resolve_deferred(env, c->_deferred, result);
 
+  for (auto& paramIter: c->kernelParams)
+    delete(paramIter.second);
   tidyCarrier(env, c);
 }
 
@@ -169,77 +189,150 @@ napi_value run(napi_env env, napi_callback_info info) {
   napi_status status;
   runCarrier* c = new runCarrier;
 
-  napi_value args[2];
-  size_t argc = 2;
+  napi_value args[1];
+  size_t argc = 1;
   napi_value programValue;
   status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
   CHECK_STATUS;
 
-  if (argc != 2) {
-    status = napi_throw_error(env, nullptr, "Wrong number of arguments. Two expected.");
+  if (argc != 1) {
+    status = napi_throw_error(env, nullptr, "Wrong number of arguments. One expected.");
     return nullptr;
   }
 
-  bool isBuffer;
-  status = napi_is_buffer(env, args[0], &isBuffer);
+  napi_valuetype t;
+  status = napi_typeof(env, args[0], &t);
   CHECK_STATUS;
-  if (!isBuffer) {
-    status = napi_throw_type_error(env, nullptr, "First argument must be the input buffer.");
+  if (t != napi_object) {
+    status = napi_throw_type_error(env, nullptr, "Parameter must be an object.");
     return nullptr;
   }
 
-  status = napi_is_buffer(env, args[1], &isBuffer);
+  napi_value kernelParamsValue;
+  status = napi_get_named_property(env, programValue, "kernelParams", &kernelParamsValue);
   CHECK_STATUS;
-  if (!isBuffer) {
-    status = napi_throw_type_error(env, nullptr, "Seconds argument must be the output buffer.");
+
+  napi_value paramNamesValue;
+  status = napi_get_property_names(env, kernelParamsValue, &paramNamesValue);
+  CHECK_STATUS;
+
+  uint32_t paramNamesCount;
+  status = napi_get_array_length(env, paramNamesValue, &paramNamesCount);
+  CHECK_STATUS;
+
+  napi_value runNamesValue;
+  status = napi_get_property_names(env, args[0], &runNamesValue);
+  CHECK_STATUS;
+
+  uint32_t runNamesCount;
+  status = napi_get_array_length(env, runNamesValue, &runNamesCount);
+  CHECK_STATUS;
+
+  if (paramNamesCount != runNamesCount) {
+    status = napi_throw_error(env, nullptr, "Incorrect number of parameters");
     return nullptr;
   }
 
-  bool hasProp;
-  status = napi_has_named_property(env, args[0], "dataSize", &hasProp);
-  CHECK_STATUS;
-  if (!hasProp) {
-    status = napi_throw_type_error(env, nullptr, "Input buffer must have been created by the program's create buffer.");
-    return nullptr;
+  for (uint32_t p=0; p<paramNamesCount; ++p) {
+    napi_value paramNameValue;
+    status = napi_get_element(env, paramNamesValue, p, &paramNameValue);
+    CHECK_STATUS;
+
+    size_t paramNameLength;
+    status = napi_get_value_string_utf8(env, paramNameValue, nullptr, 0, &paramNameLength);
+    CHECK_STATUS;
+    char* paramName = (char*)malloc(paramNameLength + 1);
+    status = napi_get_value_string_utf8(env, paramNameValue, paramName, paramNameLength + 1, nullptr);
+    CHECK_STATUS;
+  
+    napi_value paramTypeValue;
+    status = napi_get_property(env, kernelParamsValue, paramNameValue, &paramTypeValue);
+    CHECK_STATUS;
+
+    size_t paramTypeLength;
+    status = napi_get_value_string_utf8(env, paramTypeValue, nullptr, 0, &paramTypeLength);
+    char* paramType = (char*)malloc(paramTypeLength + 1);
+    status = napi_get_value_string_utf8(env, paramTypeValue, paramType, paramTypeLength + 1, nullptr);
+    CHECK_STATUS;
+
+    napi_value paramValue;
+    status = napi_get_property(env, args[0], paramNameValue, &paramValue);
+    CHECK_STATUS;
+    
+    napi_valuetype valueType;
+    status = napi_typeof(env, paramValue, &valueType);
+    CHECK_STATUS;
+
+    kernelParam* kp = new kernelParam;
+    kp->name = std::string(paramName);
+    kp->type = std::string(paramType);
+    kp->isBuf = false;
+    switch (valueType) {
+    case napi_undefined:
+      printf("Parameter name \'%s\' not found during run\n", paramName);
+      status = napi_throw_error(env, nullptr, "Parameter name not found during run");
+      return nullptr;
+      break;
+    case napi_number:
+      if (0 == strcmp("uint", paramType))
+        status = napi_get_value_uint32(env, paramValue, &kp->value.uint32);
+      else if (0 == strcmp("int", paramType))
+        status = napi_get_value_int32(env, paramValue, &kp->value.int32);
+      else if (0 == strcmp("long", paramType))
+        status = napi_get_value_int64(env, paramValue, &kp->value.int64);
+      else if (0 == strcmp("float", paramType) || 0 == strcmp("double", paramType))
+        status = napi_get_value_double(env, paramValue, &kp->value.dbl);
+      else {
+        printf("Unsupported numeric parameter type: \'%s\'\n", paramType);
+        status = napi_throw_type_error(env, nullptr, "Unsupported numeric parameter type");
+        return nullptr;
+      }
+      break;
+    case napi_object:
+      bool isBuffer;
+      status = napi_is_buffer(env, paramValue, &isBuffer);
+      CHECK_STATUS;
+      if (isBuffer) {
+        kp->isBuf = true;
+        kp->type = std::string("ptr");
+        size_t length;
+        status = napi_get_buffer_info(env, paramValue, &kp->value.ptr, &length);
+        CHECK_STATUS;
+
+        napi_value bufSizeValue;
+        status = napi_get_named_property(env, paramValue, "dataSize", &bufSizeValue);
+        CHECK_STATUS;
+        status = napi_get_value_uint32(env, bufSizeValue, &kp->bufSize);
+        CHECK_STATUS;
+
+        napi_value bufTypeValue;
+        status = napi_get_named_property(env, paramValue, "sharedMemType", &bufTypeValue);
+        CHECK_STATUS;
+        
+        char bufType[10];
+        status = napi_get_value_string_utf8(env, bufTypeValue, bufType, 10, nullptr);
+        CHECK_STATUS;
+        kp->bufType = bufType[0];
+
+        napi_value bufDirValue;
+        status = napi_get_named_property(env, paramValue, "isInput", &bufDirValue);
+        CHECK_STATUS;
+        status = napi_get_value_bool(env, bufDirValue, &kp->bufIsInput);
+        CHECK_STATUS;
+      } else {
+        status = napi_throw_type_error(env, nullptr, "Unsupported object parameter type");
+        return nullptr;
+      }
+      break;
+    default:
+      printf("Unsupported parameter value type: \'%d\'\n", valueType);
+      status = napi_throw_type_error(env, nullptr, "Unsupported parameter value type");
+      return nullptr;
+    }
+    c->kernelParams.emplace(p, kp);
+    delete paramName;
+    delete paramType;
   }
-
-  status = napi_has_named_property(env, args[1], "dataSize", &hasProp);
-  CHECK_STATUS;
-  if (!hasProp) {
-    status = napi_throw_type_error(env, nullptr, "Output buffer must have been created by the program's create buffer.");
-    return nullptr;
-  }
-
-  napi_value inputSizeValue;
-  status = napi_get_named_property(env, args[0], "dataSize", &inputSizeValue);
-  CHECK_STATUS;
-  status = napi_get_value_uint32(env, inputSizeValue, &c->inputSize);
-  CHECK_STATUS;
-
-  napi_value inputTypeValue;
-  status = napi_get_named_property(env, args[0], "sharedMemType", &inputTypeValue);
-  CHECK_STATUS;
-  status = napi_get_value_string_utf8(env, inputTypeValue, c->inputType, 10, nullptr);
-  CHECK_STATUS;
-
-  napi_value outputSizeValue;
-  status = napi_get_named_property(env, args[1], "dataSize", &outputSizeValue);
-  CHECK_STATUS;
-  status = napi_get_value_uint32(env, outputSizeValue, &c->outputSize);
-  CHECK_STATUS;
-
-  napi_value outputTypeValue;
-  status = napi_get_named_property(env, args[1], "sharedMemType", &outputTypeValue);
-  CHECK_STATUS;
-  status = napi_get_value_string_utf8(env, outputTypeValue, c->outputType, 10, nullptr);
-  CHECK_STATUS;
-
-  size_t length;
-  status = napi_get_buffer_info(env, args[0], &c->input, &length);
-  CHECK_STATUS;
-
-  status = napi_get_buffer_info(env, args[1], &c->output, &length);
-  CHECK_STATUS;
 
   // Extract externals into variables
   napi_value jsContext;

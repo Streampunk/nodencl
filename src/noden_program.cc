@@ -57,6 +57,17 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   if (error == CL_SUCCESS) printf("Failed to relase CL kernel.\n");
 }
 
+void tokenise(const std::string &str, const std::regex &regex, std::vector<std::string> &tokens)
+{
+  std::sregex_token_iterator it(str.begin(), str.end(), regex, -1);
+  std::sregex_token_iterator reg_end;
+
+  for (; it != reg_end; ++it) {
+    if (!it->str().empty()) //token could be empty:check
+      tokens.emplace_back(it->str());
+  }
+}
+
 // Promise to create a program with context and queue
 void buildExecute(napi_env env, void* data) {
   buildCarrier* c = (buildCarrier*) data;
@@ -119,7 +130,7 @@ void buildExecute(napi_env env, void* data) {
     return;
   }
 
-  c->kernel = clCreateKernel(c->program, c->name, &error);
+  c->kernel = clCreateKernel(c->program, c->name.c_str(), &error);
   ASYNC_CL_ERROR;
 
   size_t deviceWorkGroupSize;
@@ -266,10 +277,11 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
 
   status = napi_get_value_string_utf8(env, args[0], nullptr, 0, &carrier->sourceLength);
   CHECK_STATUS;
-  carrier->kernelSource = (char*) malloc(carrier->sourceLength + 1);
-  status = napi_get_value_string_utf8(env, args[0], carrier->kernelSource,
-    carrier->sourceLength + 1, nullptr);
+  char* kernelSource = (char*) malloc(carrier->sourceLength + 1);
+  status = napi_get_value_string_utf8(env, args[0], kernelSource, carrier->sourceLength + 1, nullptr);
   CHECK_STATUS;
+  carrier->kernelSource = std::string(kernelSource);
+  delete kernelSource;
 
   napi_value config;
   if (argc == 1) {
@@ -358,22 +370,55 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
     CHECK_STATUS;
   } else {
     std::regex re("__kernel\\s+void\\s+([^\\s\\(]+)\\s*\\(");
-    std::cmatch match;
+    std::smatch match;
     std::string parsedName;
     if (std::regex_search(carrier->kernelSource, match, re) && match.size() > 1) {
       parsedName = match.str(1);
     } else {
       parsedName = std::string("noden");
     }
-    status = napi_create_string_utf8(env, parsedName.data(), parsedName.length(), &nameValue);
+    status = napi_create_string_utf8(env, parsedName.c_str(), parsedName.length(), &nameValue);
     CHECK_STATUS;
   }
   status = napi_set_named_property(env, program, "name", nameValue);
   CHECK_STATUS;
   status = napi_get_value_string_utf8(env, nameValue, nullptr, 0, &carrier->nameLength);
   CHECK_STATUS;
-  carrier->name = (char *) malloc(carrier->nameLength + 1);
-  status = napi_get_value_string_utf8(env, nameValue, carrier->name, carrier->nameLength + 1, nullptr);
+
+  char* name = (char *) malloc(carrier->nameLength + 1);
+  status = napi_get_value_string_utf8(env, nameValue, name, carrier->nameLength + 1, nullptr);
+  CHECK_STATUS;
+  carrier->name = std::string(name);
+  delete name;
+
+  napi_value kernelParamsValue;
+  status = napi_create_object(env, &kernelParamsValue);
+  CHECK_STATUS;
+
+  // parse the program parameters
+  std::string ks(carrier->kernelSource);
+  size_t startParams = ks.find('(') + 1;
+  std::string paramStr(ks.substr(startParams, ks.find(')') - startParams));
+  std::vector<std::string> params;
+  tokenise(paramStr, std::regex(",+"), params);
+  uint32_t pm=0;
+  for (auto& param: params) {
+    std::vector<std::string> paramTokens;
+    tokenise(param, std::regex("\\s+"), paramTokens);
+
+    std::string paramTypeStr;
+    if (0 == paramTokens[paramTokens.size()-3].compare("unsigned"))
+      paramTypeStr = std::string("u");
+    paramTypeStr.append(paramTokens[paramTokens.size()-2]);
+
+    napi_value paramType;
+    status = napi_create_string_utf8(env, paramTypeStr.c_str(), NAPI_AUTO_LENGTH, &paramType);
+    CHECK_STATUS;
+
+    status = napi_set_named_property(env, kernelParamsValue, paramTokens.back().c_str(), paramType);
+    CHECK_STATUS;
+  }
+  status = napi_set_named_property(env, program, "kernelParams", kernelParamsValue);
   CHECK_STATUS;
 
   napi_value globalWorkItemsValue;

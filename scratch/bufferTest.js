@@ -19,8 +19,10 @@ SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandl
 
 const kernel = `__kernel void 
   convert(__global uint4* input,
-          __global uint4* output) {
+          __global uint4* output,
+          __private unsigned int width) {
     int item = get_global_id(0);
+    bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
     // 48 pixels per workItem = 128 input bytes per work item = 8 input uint4s per work item
     int inOff = 8 * item;
@@ -125,8 +127,8 @@ async function noden() {
     workItemsPerGroup: workItemsPerGroup
     });
   let [i, o] = await Promise.all([
-    program.createBuffer(numBytes, 'coarse'),
-    program.createBuffer(numBytes, 'coarse')
+    program.createBuffer(numBytes, 'coarse', 'in'),
+    program.createBuffer(numBytes, 'coarse', 'out')
   ]);
 
   o.fill(0);
@@ -134,7 +136,7 @@ async function noden() {
   dumpV210Buf(i, width, 4);
   // console.log(i);
   for (let x = 0; x < 10; x++) {
-    let timings = await program.run(i, o);
+    let timings = await program.run({input: i, output: o, width: width});
     console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
     [o, i] = [i, o];
   }

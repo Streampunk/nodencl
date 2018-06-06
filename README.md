@@ -114,12 +114,10 @@ Define an OpenCL kernel as a Javascript string. The first function in the script
 ```Javascript
 const kernel = `__kernel void square(
     __global unsigned char* input,
-    __global unsigned char* output,
-    const unsigned int count) {
+    __global unsigned char* output) {
 
     int i = get_global_id(0);
-    if (i < count)
-        output[i] = input[i] - i % 7;
+    output[i] = input[i] - i % 7;
 }`;
 ```
 
@@ -168,10 +166,10 @@ Note that further development of the API is intended to add support for Javascri
 
 ### Execute the kernel
 
-To run the kernel having created a program object, created the input and output data buffers and set the values of the input buffer as required, call the program object's `program.run()` method. The first argument is the inputs and the second argument is the outputs. This returns a promise that resolves to an object containing timing measurements for the execution. For example, in the body if an ES6 _async_ function:
+To run the kernel having created a program object, created the input and output data buffers and set the values of the input buffer as required, call the program object's `program.run()` method. The argument is an object with key names that must match the kernel parameter names and values whose type is compatible with those of the kernel program. This returns a promise that resolves to an object containing timing measurements for the execution. For example, in the body if an ES6 _async_ function:
 
 ```Javascript
-let execTimings = await program.run(inputBuffer, outputBuffer);
+let execTimings = await program.run({input: inputBuffer, output: outputBuffer});
 console.log(JSON.stringify(execTimings, null, 2));
 ```
 
