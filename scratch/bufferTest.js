@@ -21,16 +21,27 @@ const kernel = `__kernel void
   convert(__global uint4* input,
           __global uint4* output,
           __private unsigned int width) {
-    int item = get_global_id(0);
+    uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
     // 48 pixels per workItem = 128 input bytes per work item = 8 input uint4s per work item
-    int inOff = 8 * item;
+    uint numPixels = lastItemOnLine ? width % 48 : 48;
+    uint numLoops = numPixels / 6;
+    uint remain = width % 6;
+
+    uint inOff = 8 * item;
 
     // output the same for now
-    int outOff = 8 * item;
+    uint outOff = 8 * item;
 
-    for (int i=0; i<8; ++i) {
+    if (48 != numPixels) {
+      // clear the output buffer for the last item, partially overwritten below
+      uint clearOff = outOff;
+      for (uint i=0; i<8; ++i)
+        output[clearOff++] = (uint4)(0, 0, 0, 0);
+    }
+
+    for (uint i=0; i<numLoops; ++i) {
       uint4 w = input[inOff];
 
       ushort Cb0 =  w.s0        & 0x3ff;
@@ -57,6 +68,31 @@ const kernel = `__kernel void
 
       inOff++;
       outOff++;
+    }
+
+    if (remain > 0) {
+      uint4 w = input[inOff];
+
+      ushort Cb0 =  w.s0        & 0x3ff;
+      ushort Y0  = (w.s0 >> 10) & 0x3ff;
+      ushort Cr0 = (w.s0 >> 20) & 0x3ff;
+      ushort Y1  =  w.s1        & 0x3ff;
+
+      uint4 r = (uint4)(0, 0, 0, 0);
+      r.s0 = Cr0 << 20 | Y0  << 10 | Cb0;
+
+      if (2 == remain) {
+        r.s1 = Y1;
+      } else if (4 == remain) {      
+        ushort Cb2 = (w.s1 >> 10) & 0x3ff;
+        ushort Y2  = (w.s1 >> 20) & 0x3ff;
+        ushort Cr2 =  w.s2        & 0x3ff;
+        ushort Y3  = (w.s2 >> 10) & 0x3ff;
+
+        r.s1 = Y2  << 20 | Cb2 << 10 | Y1;
+        r.s2 = Y3  << 10 | Cr2;
+      }
+      output[outOff] = r;
     }
   }
 `;
