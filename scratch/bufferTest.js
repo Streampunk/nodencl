@@ -130,7 +130,7 @@ const kernel = `__kernel void
 
       if (4 == remain) {
         yuva[2] = (uint4)((w.s1 >> 20) & 0x3ff, (w.s1 >> 10) & 0x3ff, w.s2 & 0x3ff, 0);
-        yuva[3] = (uint4)((w.s2 >> 10) & 0x3ff, yuva[0].s1, yuva[0].s2, 0);
+        yuva[3] = (uint4)((w.s2 >> 10) & 0x3ff, yuva[2].s1, yuva[2].s2, 0);
       }
 
       for (uint i=0; i<remain; ++i) {
