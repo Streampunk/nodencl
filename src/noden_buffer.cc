@@ -165,7 +165,7 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
   CHECK_STATUS;
 
-  if (argc < 1 || argc > 3) {
+  if (argc < 2 || argc > 3) {
     status = napi_throw_error(env, nullptr, "Wrong number of arguments to create buffer.");
     delete c;
     return nullptr;
@@ -189,26 +189,35 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   }
   c->actualSize = (size_t) paramSize;
 
-  napi_value workItemsPerGroupValue;
-  size_t workItemsPerGroup;
-  status = napi_get_named_property(env, programValue, "workItemsPerGroup", &workItemsPerGroupValue);
+  status = napi_typeof(env, args[1], &t);
   CHECK_STATUS;
-  status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&workItemsPerGroup);
+  if (t != napi_string) {
+    status = napi_throw_type_error(env, nullptr, "Third argument must be a string - the buffer direction.");
+    delete c;
+    return nullptr;
+  }
+
+  char bufDir[10];
+  status = napi_get_value_string_utf8(env, args[1], bufDir, 10, nullptr);
   CHECK_STATUS;
-  c->dataSize = (((c->actualSize - 1) / workItemsPerGroup) + 1) * workItemsPerGroup;
-  printf("Actual size %zi data size %zi work items per group %zi.\n",
-    c->actualSize, c->dataSize, workItemsPerGroup);
-  
+
+  if ((strcmp(bufDir, "in") != 0) && (strcmp(bufDir, "out") != 0)) {
+    status = napi_throw_error(env, nullptr, "Buffer direction must be one of 'in' or 'out'.");
+    delete c;
+    return nullptr;
+  }
+  c->isInput = 0==strcmp("in", bufDir);
+
   napi_value bufTypeValue;
-  if (argc >= 2) {
-    status = napi_typeof(env, args[1], &t);
+  if (argc == 3) {
+    status = napi_typeof(env, args[2], &t);
     CHECK_STATUS;
     if (t != napi_string) {
       status = napi_throw_type_error(env, nullptr, "Second argument must be a string - the buffer type.");
       delete c;
       return nullptr;
     }
-    bufTypeValue = args[1];
+    bufTypeValue = args[2];
   } else {
     status = napi_get_named_property(env, programValue, "sharedMemType", &bufTypeValue);
     CHECK_STATUS;
@@ -216,29 +225,34 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   status = napi_get_value_string_utf8(env, bufTypeValue, c->svmType, 10, nullptr);
   CHECK_STATUS;
 
-  napi_value bufDirValue;
-  if (argc == 3) {
-    napi_valuetype t;
-    status = napi_typeof(env, args[2], &t);
-    CHECK_STATUS;
-    if (t != napi_string) {
-      status = napi_throw_type_error(env, nullptr, "Third argument must be a string - the buffer direction.");
-      delete c;
-      return nullptr;
-    }
-    bufDirValue = args[2];
-    char bufDir[10];
-    status = napi_get_value_string_utf8(env, bufDirValue, bufDir, 10, nullptr);
-    CHECK_STATUS;
-    c->isInput = 0==strcmp("in", bufDir);
-  }
-
   if ((strcmp(c->svmType, "fine") != 0) &&
     (strcmp(c->svmType, "coarse") != 0) &&
+    (strcmp(c->svmType, "param") != 0) &&
     (strcmp(c->svmType, "none") != 0)) {
-    status = napi_throw_error(env, nullptr, "Buffer type must be one of 'fine', 'coarse' or 'none'.");
+    status = napi_throw_error(env, nullptr, "Buffer type must be one of 'fine', 'coarse', 'param' or 'none'.");
     delete c;
     return nullptr;
+  }
+
+  bool isParamBuf = false;
+  if (0 == strcmp(c->svmType, "param")) {
+    isParamBuf = true;
+    strcpy(c->svmType, "none");
+  }
+
+  if (isParamBuf) {
+    c->dataSize = c->actualSize;
+    printf("Actual size %zi.\n", c->actualSize);
+  } else {
+    napi_value workItemsPerGroupValue;
+    size_t workItemsPerGroup;
+    status = napi_get_named_property(env, programValue, "workItemsPerGroup", &workItemsPerGroupValue);
+    CHECK_STATUS;
+    status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&workItemsPerGroup);
+    CHECK_STATUS;
+    c->dataSize = (((c->actualSize - 1) / workItemsPerGroup) + 1) * workItemsPerGroup;
+    printf("Actual size %zi data size %zi work items per group %zi.\n",
+      c->actualSize, c->dataSize, workItemsPerGroup);
   }
 
   // Extract externals into variables
