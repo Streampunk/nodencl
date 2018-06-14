@@ -29,20 +29,6 @@
 #include "noden_buffer.h"
 #include "noden_run.h"
 
-void tidyContext(napi_env env, void* data, void* hint) {
-  printf("Context finalizer called.\n");
-  cl_int error = CL_SUCCESS;
-  error = clReleaseContext((cl_context) data);
-  if (error != CL_SUCCESS) printf("Failed to release CL context.\n");
-}
-
-void tidyQueue(napi_env env, void* data, void* hint) {
-  printf("Queue finalizer called.\n");
-  cl_int error = CL_SUCCESS;
-  error = clReleaseCommandQueue((cl_command_queue) data);
-  if (error != CL_SUCCESS) printf("Failed to release CL queue.\n");
-}
-
 void tidyProgram(napi_env env, void* data, void* hint) {
   printf("Program finalizer called.\n");
   cl_int error = CL_SUCCESS;
@@ -76,47 +62,6 @@ void buildExecute(napi_env env, void* data) {
   printf("Execution starting\n");
   printf("globalWorkItems: %zd, workItemsPerGroup: %zd\n", c->globalWorkItems, c->workItemsPerGroup);
   HR_TIME_POINT start = NOW;
-
-  std::vector<cl_platform_id> platformIds;
-  error = getPlatformIds(platformIds);
-  ASYNC_CL_ERROR;
-
-  if (c->platformIndex >= platformIds.size()) {
-    c->status = NODEN_OUT_OF_RANGE;
-    c->errorMsg = "Property platformIndex is larger than the available number of platforms.";
-    return;
-  }
-
-  std::vector<cl_device_id> deviceIds;
-  error = getDeviceIds(c->platformIndex, deviceIds);
-  ASYNC_CL_ERROR;
-
-  if (c->deviceIndex >= deviceIds.size()) {
-    c->status = NODEN_OUT_OF_RANGE;
-    char *errorMsg = (char *) malloc(200);
-    sprintf(errorMsg, "Property deviceIndex is larger than the available number of devices for platform %i.", c->platformIndex);
-    printf("got here %s\n", errorMsg);
-    c->errorMsg = std::string(errorMsg);
-    delete[] errorMsg;
-    return;
-  }
-
-  c->deviceId = deviceIds[c->deviceIndex];
-  error = clGetDeviceInfo(c->deviceId, CL_DEVICE_SVM_CAPABILITIES,
-    sizeof(cl_ulong), &c->svmCaps, nullptr);
-  if (error == CL_INVALID_VALUE) {
-    c->svmCaps = 0;
-  } else {
-    ASYNC_CL_ERROR;
-  }
-
-  cl_context_properties properties[] =
-    { CL_CONTEXT_PLATFORM, (cl_context_properties)platformIds[c->platformIndex], 0 };
-  c->context = clCreateContext(properties, 1, &c->deviceId, nullptr, nullptr, &error);
-  ASYNC_CL_ERROR;
-
-  c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
-  ASYNC_CL_ERROR;
 
   const char* kernelSource[1];
   kernelSource[0] = c->kernelSource.data();
@@ -181,18 +126,6 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "deviceId", jsDeviceId);
   REJECT_STATUS;
 
-  napi_value jsContext;
-  c->status = napi_create_external(env, c->context, tidyContext, nullptr, &jsContext);
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "context", jsContext);
-  REJECT_STATUS;
-
-  napi_value jsCommands;
-  c->status = napi_create_external(env, c->commands, tidyQueue, nullptr, &jsCommands);
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "commands", jsCommands);
-  REJECT_STATUS;
-
   napi_value jsExtProgram;
   c->status = napi_create_external(env, c->program, tidyProgram, nullptr, &jsExtProgram);
   REJECT_STATUS;
@@ -211,18 +144,6 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
   REJECT_STATUS;
 
-  napi_value svmValue;
-  if (c->svmCaps | CL_MEM_SVM_FINE_GRAIN_BUFFER) {
-    c->status = napi_create_string_utf8(env, "fine", NAPI_AUTO_LENGTH, &svmValue);
-  } else if (c->svmCaps | CL_DEVICE_SVM_COARSE_GRAIN_BUFFER) {
-    c->status = napi_create_string_utf8(env, "coarse", NAPI_AUTO_LENGTH, &svmValue);
-  } else {
-    c->status = napi_create_string_utf8(env, "none", NAPI_AUTO_LENGTH, &svmValue);
-  }
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "sharedMemType", svmValue);
-  REJECT_STATUS;
-
   napi_value globalWorkItemsValue;
   c->status = napi_create_int64(env, (int64_t) c->globalWorkItems, &globalWorkItemsValue);
   REJECT_STATUS;
@@ -233,13 +154,6 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_create_int64(env, (int64_t) c->workItemsPerGroup, &workItemsPerGroupValue);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "workItemsPerGroup", workItemsPerGroupValue);
-  REJECT_STATUS;
-
-  napi_value createBufValue;
-  c->status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
-    createBuffer, nullptr, &createBufValue);
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "createBuffer", createBufValue);
   REJECT_STATUS;
 
   napi_value runValue;
@@ -264,7 +178,8 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
 
   napi_value args[2];
   size_t argc = 2;
-  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  napi_value contextValue;
+  status = napi_get_cb_info(env, info, &argc, args, &contextValue, nullptr);
   CHECK_STATUS;
 
   if (argc < 1 || argc > 2) {
@@ -294,85 +209,15 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   carrier->kernelSource = std::string(kernelSource);
   delete kernelSource;
 
-  napi_value config;
-  if (argc == 1) {
-    config = findFirstGPU(env, nullptr);
-    if (config == nullptr) {
-      status = napi_throw_error(env, nullptr, "Find first GPU failed.");
-      return nullptr;
-    }
-    status = napi_typeof(env, config, &t);
-    CHECK_STATUS;
-    if (t == napi_undefined) {
-      status = napi_throw_error(env, nullptr, "Failed to find a GPU on this system.");
-      return nullptr;
-    }
-  } else {
-    config = args[1];
-  }
-
+  napi_value config = args[1];
   status = napi_typeof(env, config, &t);
   CHECK_STATUS;
   if (t != napi_object) {
     status = napi_throw_type_error(env, nullptr, "Configuration parameters must be an object.");
     return nullptr;
   }
+
   bool hasProp;
-  status = napi_has_named_property(env, config, "platformIndex", &hasProp);
-  CHECK_STATUS;
-  if (!hasProp) {
-    status = napi_throw_type_error(env, nullptr, "Configuration parameters must have platfromIndex.");
-    return nullptr;
-  }
-  status = napi_has_named_property(env, config, "deviceIndex", &hasProp);
-  CHECK_STATUS;
-  if (!hasProp) {
-    status = napi_throw_type_error(env, nullptr, "Configuration parameters must have deviceIndex.");
-    return nullptr;
-  }
-
-  napi_value platformValue, deviceValue;
-  status = napi_get_named_property(env, config, "platformIndex", &platformValue);
-  CHECK_STATUS;
-  status = napi_typeof(env, platformValue, &t);
-  CHECK_STATUS;
-  if (t != napi_number) {
-    status = napi_throw_type_error(env, nullptr, "Configuration parameter platformIndex must be a number.");
-    return nullptr;
-  }
-  status = napi_get_named_property(env, config, "deviceIndex", &deviceValue);
-  CHECK_STATUS;
-  status = napi_typeof(env, deviceValue, &t);
-  CHECK_STATUS;
-  if (t != napi_number) {
-    status = napi_throw_type_error(env, nullptr, "Configuration parameter deviceIndex must be a number.");
-    return nullptr;
-  }
-
-  int32_t checkValue;
-  status = napi_get_value_int32(env, platformValue, &checkValue);
-  CHECK_STATUS;
-  if (checkValue < 0) {
-    status = napi_throw_range_error(env, nullptr, "Configuration parameter platformIndex cannot be negative.");
-    return nullptr;
-  }
-  status = napi_get_value_int32(env, deviceValue, &checkValue);
-  CHECK_STATUS;
-  if (checkValue < 0) {
-    status = napi_throw_range_error(env, nullptr, "Configuration parameter deviceIndex cannot be negative.");
-    return nullptr;
-  }
-
-  status = napi_get_value_uint32(env, platformValue, &carrier->platformIndex);
-  CHECK_STATUS;
-  status = napi_get_value_uint32(env, deviceValue, &carrier->deviceIndex);
-  CHECK_STATUS;
-
-  status = napi_set_named_property(env, program, "platformIndex", platformValue);
-  CHECK_STATUS;
-  status = napi_set_named_property(env, program, "deviceIndex", deviceValue);
-  CHECK_STATUS;
-
   napi_value nameValue;
   status = napi_has_named_property(env, config, "name", &hasProp);
   CHECK_STATUS;
@@ -461,6 +306,46 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
   status = napi_set_named_property(env, program, "workItemsPerGroup", workItemsPerGroupValue);
   CHECK_STATUS;
+
+  napi_value jsContext;
+  status = napi_get_named_property(env, contextValue, "context", &jsContext);
+  CHECK_STATUS;
+  void* contextData;
+  status = napi_get_value_external(env, jsContext, &contextData);
+  CHECK_STATUS;
+  carrier->context = (cl_context) contextData;
+  status = napi_set_named_property(env, program, "context", jsContext);
+  CHECK_STATUS;
+
+  napi_value jsCommands;
+  status = napi_get_named_property(env, contextValue, "commands", &jsCommands);
+  CHECK_STATUS;
+  void* commandsData;
+  status = napi_get_value_external(env, jsCommands, &commandsData);
+  CHECK_STATUS;
+  carrier->commands = (cl_command_queue) commandsData;
+  status = napi_set_named_property(env, program, "commands", jsCommands);
+  CHECK_STATUS;
+
+  napi_value platformValue;
+  status = napi_get_named_property(env, contextValue, "platformIndex", &platformValue);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, platformValue, &carrier->platformIndex);
+  CHECK_STATUS;
+
+  napi_value deviceValue;
+  status = napi_get_named_property(env, contextValue, "deviceIndex", &deviceValue);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, deviceValue, &carrier->deviceIndex);
+  CHECK_STATUS;
+
+  napi_value deviceIdValue;
+  status = napi_get_named_property(env, contextValue, "deviceId", &deviceIdValue);
+  CHECK_STATUS;
+  void* deviceIdData;
+  status = napi_get_value_external(env, deviceIdValue, &deviceIdData);
+  CHECK_STATUS;
+  carrier->deviceId = (cl_device_id) deviceIdData;
 
   status = napi_create_reference(env, program, 1, &carrier->passthru);
   CHECK_STATUS;

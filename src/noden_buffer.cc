@@ -161,8 +161,8 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
 
   napi_value args[3];
   size_t argc = 3;
-  napi_value programValue;
-  status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
+  napi_value contextValue;
+  status = napi_get_cb_info(env, info, &argc, args, &contextValue, nullptr);
   CHECK_STATUS;
 
   if (argc < 2 || argc > 3) {
@@ -192,7 +192,7 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   status = napi_typeof(env, args[1], &t);
   CHECK_STATUS;
   if (t != napi_string) {
-    status = napi_throw_type_error(env, nullptr, "Third argument must be a string - the buffer direction.");
+    status = napi_throw_type_error(env, nullptr, "Second argument must be a string - the buffer direction.");
     delete c;
     return nullptr;
   }
@@ -213,16 +213,23 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
     status = napi_typeof(env, args[2], &t);
     CHECK_STATUS;
     if (t != napi_string) {
-      status = napi_throw_type_error(env, nullptr, "Second argument must be a string - the buffer type.");
+      status = napi_throw_type_error(env, nullptr, "Third argument must be a string - the buffer type.");
       delete c;
       return nullptr;
     }
     bufTypeValue = args[2];
   } else {
-    status = napi_get_named_property(env, programValue, "sharedMemType", &bufTypeValue);
+    status = napi_create_string_utf8(env, "none", 10, &bufTypeValue);
     CHECK_STATUS;
   }
   status = napi_get_value_string_utf8(env, bufTypeValue, c->svmType, 10, nullptr);
+  CHECK_STATUS;
+
+  napi_value svmCapsValue;
+  status = napi_get_named_property(env, contextValue, "svmCaps", &svmCapsValue);
+  CHECK_STATUS;
+  cl_ulong svmCaps;
+  status = napi_get_value_int64(env, svmCapsValue, (int64_t*)&svmCaps);
   CHECK_STATUS;
 
   if ((strcmp(c->svmType, "fine") != 0) &&
@@ -233,26 +240,33 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
+  if (((strcmp(c->svmType, "fine") == 0) && ((svmCaps & CL_MEM_SVM_FINE_GRAIN_BUFFER) == 0)) ||
+      ((strcmp(c->svmType, "coarse") == 0) && ((svmCaps & CL_DEVICE_SVM_COARSE_GRAIN_BUFFER) == 0))) {
+    status = napi_throw_error(env, nullptr, "Buffer type requested is not supported by device.");
+    delete c;
+    return nullptr;
+  }
+
   printf("Buffer size %zi.\n", c->numBytes);
 
   // Extract externals into variables
   napi_value jsContext;
   void* contextData;
-  status = napi_get_named_property(env, programValue, "context", &jsContext);
+  status = napi_get_named_property(env, contextValue, "context", &jsContext);
   CHECK_STATUS;
   status = napi_get_value_external(env, jsContext, &contextData);
-  c->context = (cl_context) contextData;
   CHECK_STATUS;
+  c->context = (cl_context) contextData;
 
   napi_value jsCommands;
   void* commandsData;
-  status = napi_get_named_property(env, programValue, "commands", &jsCommands);
+  status = napi_get_named_property(env, contextValue, "commands", &jsCommands);
   CHECK_STATUS;
   status = napi_get_value_external(env, jsCommands, &commandsData);
-  c->commands = (cl_command_queue) commandsData;
   CHECK_STATUS;
+  c->commands = (cl_command_queue) commandsData;
 
-  status = napi_create_reference(env, programValue, 1, &c->passthru);
+  status = napi_create_reference(env, contextValue, 1, &c->passthru);
   CHECK_STATUS;
 
   napi_value promise, resource_name;

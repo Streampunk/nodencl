@@ -416,8 +416,8 @@ function diff32(buf1, buf2, width, height) {
 }
 
 async function noden() {
-  const platformIndex = 0;
-  const deviceIndex = 1;
+  const platformIndex = 1;
+  const deviceIndex = 0;
   const platformInfo = addon.getPlatformInfo()[platformIndex];
   // console.log(JSON.stringify(platformInfo, null, 2));
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
@@ -431,25 +431,26 @@ async function noden() {
   const workItemsPerGroup = (width + 47 - ((width - 1) % 48)) / 48;
   const globalWorkItems = workItemsPerGroup * height;
 
-  let readV210program = await addon.createProgram(readV210, {
+  const context = addon.createContext({
     platformIndex: platformIndex, 
-    deviceIndex: deviceIndex,
+    deviceIndex: deviceIndex
+  });
+
+  const readV210program = await context.createProgram(readV210, {
     globalWorkItems: globalWorkItems,
     workItemsPerGroup: workItemsPerGroup
   });
 
-  let writeV210program = await addon.createProgram(writeV210, {
-    platformIndex: platformIndex, 
-    deviceIndex: deviceIndex,
+  const writeV210program = await context.createProgram(writeV210, {
     globalWorkItems: globalWorkItems,
     workItemsPerGroup: workItemsPerGroup
   });
 
   let [i1, o1, m1, g1] = await Promise.all([
-    readV210program.createBuffer(numBytesV210, 'in', 'coarse'),
-    readV210program.createBuffer(numBytesRGBA, 'out', 'coarse'),
-    readV210program.createBuffer(64, 'in', 'none'),
-    readV210program.createBuffer(2**16 * 4, 'in', 'none')
+    context.createBuffer(numBytesV210, 'in', 'coarse'),
+    context.createBuffer(numBytesRGBA, 'out', 'coarse'),
+    context.createBuffer(64, 'in', 'none'),
+    context.createBuffer(2**16 * 4, 'in', 'none')
   ]);
 
   fillV210Buf(i1, width, height);
@@ -469,19 +470,17 @@ async function noden() {
     console.log(`Line ${y}: ${o1.readFloatLE(off+0).toFixed(4)}, ${o1.readFloatLE(off+4).toFixed(4)}, ${o1.readFloatLE(off+8).toFixed(4)}, ${o1.readFloatLE(off+12).toFixed(4)}, ${o1.readFloatLE(off+16).toFixed(4)}, ${o1.readFloatLE(off+20).toFixed(4)}, ${o1.readFloatLE(off+24).toFixed(4)}, ${o1.readFloatLE(off+28).toFixed(4)}`);
   }
 
-  let [i2, o2, m2, g2] = await Promise.all([
-    writeV210program.createBuffer(numBytesRGBA, 'in', 'coarse'),
-    writeV210program.createBuffer(numBytesV210, 'out', 'coarse'),
-    writeV210program.createBuffer(64, 'in', 'none'),
-    writeV210program.createBuffer(2**16 * 4, 'in', 'none')
+  let [o2, m2, g2] = await Promise.all([
+    context.createBuffer(numBytesV210, 'out', 'coarse'),
+    context.createBuffer(64, 'in', 'none'),
+    context.createBuffer(2**16 * 4, 'in', 'none')
   ]);
 
-  o1.copy(i2);
   rgb2ycbcrMatrix(m2, '709', 10);
   linearToGammaLUT(g2, '709', 10);
 
   for (let x = 0; x < 10; x++) {
-    let timings2 = await writeV210program.run({input: i2, output: o2, width: width, matrix: m2, linearToGammaLUT: g2});
+    let timings2 = await writeV210program.run({input: o1, output: o2, width: width, matrix: m2, linearToGammaLUT: g2});
     console.log(`${timings2.dataToKernel}, ${timings2.kernelExec}, ${timings2.dataFromKernel}, ${timings2.totalTime}`);
     // [o, i] = [i, o];
   }
@@ -490,16 +489,10 @@ async function noden() {
   console.log('Compare returned', i1.compare(o2));
   diff32(i1, o2, width, height);
   return [i1, o2];
-
-  // let i1 = {};
-  // i1.creationTime = 0;
-  // let o1 = {};
-  // o1.creationTime = 0;
-
-  // return [i1, o1];
 }
 noden()
   .then(([i, o]) => { return [i.creationTime, o.creationTime] }, console.error)
-  .then(([ict, oct]) => { if (global.gc()) global.gc(); console.log(ict, oct); });
+  .then(([ict, oct]) => { if (global.gc()) global.gc(); console.log(ict, oct); })
+  .catch( console.error );
   // .then(([i, o]) => { console.log(i.creationTime, o.creationTime); return }, console.error)
   // .then(() => { if (global.gc()) global.gc(); });

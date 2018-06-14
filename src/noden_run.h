@@ -14,7 +14,7 @@
 */
 
 #ifndef NODEN_RUN_H
-#define NODEC_RUN_H
+#define NODEN_RUN_H
 
 #ifdef __APPLE__
     #include "OpenCL/opencl.h"
