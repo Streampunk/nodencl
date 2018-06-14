@@ -34,8 +34,7 @@ struct createBufCarrier : carrier {
   bool isInput = true;
   char svmType[10] = "none";
   void* data = nullptr;
-  size_t dataSize = 0;
-  size_t actualSize = 0;
+  size_t numBytes = 0;
   cl_context context;
   cl_command_queue commands;
 };

@@ -299,10 +299,10 @@ napi_value run(napi_env env, napi_callback_info info) {
         status = napi_get_buffer_info(env, paramValue, &kp->value.ptr, &length);
         CHECK_STATUS;
 
-        napi_value bufSizeValue;
-        status = napi_get_named_property(env, paramValue, "dataSize", &bufSizeValue);
+        napi_value numBytesValue;
+        status = napi_get_named_property(env, paramValue, "numBytes", &numBytesValue);
         CHECK_STATUS;
-        status = napi_get_value_uint32(env, bufSizeValue, &kp->bufSize);
+        status = napi_get_value_uint32(env, numBytesValue, &kp->bufSize);
         CHECK_STATUS;
 
         napi_value bufTypeValue;

@@ -23,6 +23,7 @@
 #endif
 #include <chrono>
 #include <stdio.h>
+#include <string>
 #include "node_api.h"
 
 #define DECLARE_NAPI_METHOD(name, func) { name, 0, func, 0, 0, 0, napi_default, 0 }
@@ -67,7 +68,7 @@ napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
 struct carrier {
   napi_ref passthru = nullptr;
   int32_t status = NODEN_SUCCESS;
-  char* errorMsg;
+  std::string errorMsg;
   long long totalTime;
   napi_deferred _deferred;
   napi_async_work _request;
@@ -78,9 +79,10 @@ int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line);
 
 #define ASYNC_CL_ERROR if (error != CL_SUCCESS) { \
   c->status = error; \
-  c->errorMsg = (char *) malloc(200); \
-  sprintf(c->errorMsg, "In file %s line %d, got CL error %i of type %s.", \
+  char errorMsg[200]; \
+  sprintf(errorMsg, "In file %s line %d, got CL error %i of type %s.", \
     __FILE__, __LINE__ - 1, error, clGetErrorString(error)); \
+  c->errorMsg = std::string(errorMsg); \
   return; \
 }
 

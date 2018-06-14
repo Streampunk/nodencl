@@ -54,7 +54,7 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   printf("Kernel finalizer called.\n");
   cl_int error = CL_SUCCESS;
   error = clReleaseKernel((cl_kernel) data);
-  if (error == CL_SUCCESS) printf("Failed to relase CL kernel.\n");
+  if (error != CL_SUCCESS) printf("Failed to release CL kernel.\n");
 }
 
 void tokenise(const std::string &str, const std::regex &regex, std::vector<std::string> &tokens)
@@ -93,9 +93,11 @@ void buildExecute(napi_env env, void* data) {
 
   if (c->deviceIndex >= deviceIds.size()) {
     c->status = NODEN_OUT_OF_RANGE;
-    c->errorMsg = (char *) malloc(200);
-    sprintf(c->errorMsg, "Property deviceIndex is larger than the available number of devices for platform %i.", c->platformIndex);
-    printf("got here %s\n", c->errorMsg);
+    char *errorMsg = (char *) malloc(200);
+    sprintf(errorMsg, "Property deviceIndex is larger than the available number of devices for platform %i.", c->platformIndex);
+    printf("got here %s\n", errorMsg);
+    c->errorMsg = std::string(errorMsg);
+    delete[] errorMsg;
     return;
   }
 
@@ -108,25 +110,32 @@ void buildExecute(napi_env env, void* data) {
     ASYNC_CL_ERROR;
   }
 
-  c->context = clCreateContext(0, 1, &c->deviceId, nullptr, nullptr, &error);
+  cl_context_properties properties[] =
+    { CL_CONTEXT_PLATFORM, (cl_context_properties)platformIds[c->platformIndex], 0 };
+  c->context = clCreateContext(properties, 1, &c->deviceId, nullptr, nullptr, &error);
   ASYNC_CL_ERROR;
 
   c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
   ASYNC_CL_ERROR;
 
-  c->program = clCreateProgramWithSource(c->context, 1, (const char **) &c->kernelSource,
+  const char* kernelSource[1];
+  kernelSource[0] = c->kernelSource.data();
+  c->program = clCreateProgramWithSource(c->context, 1, kernelSource,
     nullptr, &error);
   ASYNC_CL_ERROR;
 
   error = clBuildProgram(c->program, 0, nullptr, nullptr, nullptr, nullptr);
   if (error != CL_SUCCESS) {
     size_t len;
-    char buffer[2048];
+    clGetProgramBuildInfo(c->program, c->deviceId, CL_PROGRAM_BUILD_LOG,
+      0, NULL, &len);
+    char* buffer = (char*)std::calloc(len, sizeof(char));
 
     clGetProgramBuildInfo(c->program, c->deviceId, CL_PROGRAM_BUILD_LOG,
-      sizeof(buffer), buffer, &len);
+      len, buffer, NULL);
     c->status = NODEN_BUILD_ERROR;
-    c->errorMsg = buffer;
+    c->errorMsg = std::string(buffer);
+    delete[] buffer;
     return;
   }
 
@@ -142,9 +151,11 @@ void buildExecute(napi_env env, void* data) {
     c->workItemsPerGroup = deviceWorkGroupSize;
   else if (c->workItemsPerGroup > deviceWorkGroupSize) {
     c->status = NODEN_OUT_OF_RANGE;
-    c->errorMsg = (char *) malloc(200);
-    sprintf(c->errorMsg, "Property workItemsPerGroup (%zd) is larger than the available workgroup size (%zd) for platform %i.",
+    char* errorMsg = (char *) malloc(200);
+    sprintf(errorMsg, "Property workItemsPerGroup (%zd) is larger than the available workgroup size (%zd) for platform %i.",
             c->workItemsPerGroup, deviceWorkGroupSize, c->platformIndex);
+    c->errorMsg = std::string(errorMsg);
+    delete[] errorMsg;
     return;
   }
 

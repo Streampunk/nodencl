@@ -65,7 +65,7 @@ void createBufferExecute(napi_env env, void* data) {
   switch (c->svmType[0]) {
     case NODEN_SVM_FINE_CHAR:
       c->data = clSVMAlloc(c->context,
-        CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER, c->dataSize, 0);
+        CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER, c->numBytes, 0);
       if (c->data == nullptr) {
         c->status = NODEN_ALLOCATION_FAILURE;
         c->errorMsg = "Failed to allocate fine grained memory for buffer.";
@@ -73,7 +73,7 @@ void createBufferExecute(napi_env env, void* data) {
       }
       break;
     case NODEN_SVM_COARSE_CHAR:
-      c->data = clSVMAlloc(c->context, CL_MEM_READ_WRITE, c->dataSize, 0);
+      c->data = clSVMAlloc(c->context, CL_MEM_READ_WRITE, c->numBytes, 0);
       if (c->data == nullptr) {
         c->status = NODEN_ALLOCATION_FAILURE;
         c->errorMsg = "Failed to allocate fine grained memory for buffer.";
@@ -82,12 +82,12 @@ void createBufferExecute(napi_env env, void* data) {
       break;
     default:
     case NODEN_SVM_NONE_CHAR:
-      c->data = (void *) malloc(c->dataSize);
+      c->data = (void *) malloc(c->numBytes);
       break;
   }
 
   if (c->svmType[0] == NODEN_SVM_COARSE_CHAR) {
-    error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, c->data, c->dataSize, 0, 0, 0);
+    error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, c->data, c->numBytes, 0, 0, 0);
     ASYNC_CL_ERROR;
   }
 
@@ -113,9 +113,9 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
   tidyHint* hint = new tidyHint;
   hint->context = c->context;
   strcpy(hint->svmType, c->svmType);
-  c->status = napi_create_reference(env, programValue, 1, &hint->program);
+  c->status = napi_create_reference(env, programValue, 0, &hint->program);
   REJECT_STATUS;
-  c->status = napi_create_external_buffer(env, c->actualSize, c->data, &tidyBuffer, hint, &result);
+  c->status = napi_create_external_buffer(env, c->numBytes, c->data, &tidyBuffer, hint, &result);
   REJECT_STATUS;
 
   napi_value mappedValue;
@@ -124,10 +124,10 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "mapped", mappedValue);
   REJECT_STATUS;
 
-  napi_value dataSizeValue;
-  c->status = napi_create_uint32(env, (int32_t) c->dataSize, &dataSizeValue);
+  napi_value numBytesValue;
+  c->status = napi_create_uint32(env, (int32_t) c->numBytes, &numBytesValue);
   REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "dataSize", dataSizeValue);
+  c->status = napi_set_named_property(env, result, "numBytes", numBytesValue);
   REJECT_STATUS;
 
   napi_value creationValue;
@@ -187,7 +187,7 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
     delete c;
     return nullptr;
   }
-  c->actualSize = (size_t) paramSize;
+  c->numBytes = (size_t) paramSize;
 
   status = napi_typeof(env, args[1], &t);
   CHECK_STATUS;
@@ -227,33 +227,13 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
 
   if ((strcmp(c->svmType, "fine") != 0) &&
     (strcmp(c->svmType, "coarse") != 0) &&
-    (strcmp(c->svmType, "param") != 0) &&
     (strcmp(c->svmType, "none") != 0)) {
-    status = napi_throw_error(env, nullptr, "Buffer type must be one of 'fine', 'coarse', 'param' or 'none'.");
+    status = napi_throw_error(env, nullptr, "Buffer type must be one of 'fine', 'coarse' or 'none'.");
     delete c;
     return nullptr;
   }
 
-  bool isParamBuf = false;
-  if (0 == strcmp(c->svmType, "param")) {
-    isParamBuf = true;
-    strcpy(c->svmType, "none");
-  }
-
-  if (isParamBuf) {
-    c->dataSize = c->actualSize;
-    printf("Actual size %zi.\n", c->actualSize);
-  } else {
-    napi_value workItemsPerGroupValue;
-    size_t workItemsPerGroup;
-    status = napi_get_named_property(env, programValue, "workItemsPerGroup", &workItemsPerGroupValue);
-    CHECK_STATUS;
-    status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&workItemsPerGroup);
-    CHECK_STATUS;
-    c->dataSize = (((c->actualSize - 1) / workItemsPerGroup) + 1) * workItemsPerGroup;
-    printf("Actual size %zi data size %zi work items per group %zi.\n",
-      c->actualSize, c->dataSize, workItemsPerGroup);
-  }
+  printf("Buffer size %zi.\n", c->numBytes);
 
   // Extract externals into variables
   napi_value jsContext;

@@ -209,8 +209,8 @@ int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line) {
     napi_value errorValue, errorCode, errorMsg;
     napi_status status;
     char errorChars[20];
-    char* extMsg = (char *) malloc(sizeof(char) * strlen(c->errorMsg) + 200);
-    sprintf(extMsg, "In file %s on line %i, found error: %s", file, line, c->errorMsg);
+    char* extMsg = (char *) malloc(sizeof(char) * c->errorMsg.length() + 200);
+    sprintf(extMsg, "In file %s on line %i, found error: %s", file, line, c->errorMsg.c_str());
     status = napi_create_string_utf8(env, itoa(c->status, errorChars, 10),
       NAPI_AUTO_LENGTH, &errorCode);
     FLOATING_STATUS;
@@ -220,6 +220,8 @@ int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line) {
     FLOATING_STATUS;
     status = napi_reject_deferred(env, c->_deferred, errorValue);
     FLOATING_STATUS;
+
+    delete[] extMsg;
     tidyCarrier(env, c);
   }
   return c->status;
