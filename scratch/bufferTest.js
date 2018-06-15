@@ -225,10 +225,10 @@ const readV210 = `__kernel void
       for (uint p=0; p<6; ++p) {
         float4 yuva_f = convert_float4(yuva[p]);
         float4 rgba;
-        rgba.s0 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matR, yuva_f) * 65535.0f)];
-        rgba.s1 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matG, yuva_f) * 65535.0f)];
-        rgba.s2 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matB, yuva_f) * 65535.0f)];
-        rgba.s3 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matA, yuva_f) * 65535.0f)];
+        rgba.s0 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matR, yuva_f) * 65535.0f)];
+        rgba.s1 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matG, yuva_f) * 65535.0f)];
+        rgba.s2 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matB, yuva_f) * 65535.0f)];
+        rgba.s3 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matA, yuva_f) * 65535.0f)];
         output[outOff+p] = rgba;
       }
 
@@ -251,10 +251,10 @@ const readV210 = `__kernel void
       for (uint p=0; p<remain; ++p) {
         float4 yuva_f = convert_float4(yuva[p]);
         float4 rgba;
-        rgba.s0 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matR, yuva_f) * 65535.0f)];
-        rgba.s1 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matG, yuva_f) * 65535.0f)];
-        rgba.s2 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matB, yuva_f) * 65535.0f)];
-        rgba.s3 = gammaToLinearLUT[convert_ushort_sat_rtz(dot(matA, yuva_f) * 65535.0f)];
+        rgba.s0 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matR, yuva_f) * 65535.0f)];
+        rgba.s1 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matG, yuva_f) * 65535.0f)];
+        rgba.s2 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matB, yuva_f) * 65535.0f)];
+        rgba.s3 = gammaToLinearLUT[convert_ushort_sat_rte(dot(matA, yuva_f) * 65535.0f)];
         output[outOff+p] = rgba;
       }
     }
@@ -296,15 +296,15 @@ const writeV210 = `__kernel void
       for (uint p=0; p<6; ++p) {
         float4 rgba_l = input[inOff+p];
         float4 rgba;
-        rgba.s0 = linearToGammaLUT[convert_ushort_sat_rtz(rgba_l.s0 * 65535.0f)];
-        rgba.s1 = linearToGammaLUT[convert_ushort_sat_rtz(rgba_l.s1 * 65535.0f)];
-        rgba.s2 = linearToGammaLUT[convert_ushort_sat_rtz(rgba_l.s2 * 65535.0f)];
-        rgba.s3 = linearToGammaLUT[convert_ushort_sat_rtz(rgba_l.s3 * 65535.0f)];
+        rgba.s0 = linearToGammaLUT[convert_ushort_sat_rte(rgba_l.s0 * 65535.0f)];
+        rgba.s1 = linearToGammaLUT[convert_ushort_sat_rte(rgba_l.s1 * 65535.0f)];
+        rgba.s2 = linearToGammaLUT[convert_ushort_sat_rte(rgba_l.s2 * 65535.0f)];
+        rgba.s3 = linearToGammaLUT[convert_ushort_sat_rte(rgba_l.s3 * 65535.0f)];
 
-        yuva[p].s0 = convert_ushort_sat(round(dot(matY, rgba)));
-        yuva[p].s1 = convert_ushort_sat(round(dot(matU, rgba)));
-        yuva[p].s2 = convert_ushort_sat(round(dot(matV, rgba)));
-        yuva[p].s3 = convert_ushort_sat(round(dot(matA, rgba)));
+        yuva[p].s0 = convert_ushort_sat_rte(dot(matY, rgba));
+        yuva[p].s1 = convert_ushort_sat_rte(dot(matU, rgba));
+        yuva[p].s2 = convert_ushort_sat_rte(dot(matV, rgba));
+        yuva[p].s3 = convert_ushort_sat_rte(dot(matA, rgba));
       }
 
       uint4 w;
@@ -431,7 +431,7 @@ async function noden() {
   const workItemsPerGroup = (width + 47 - ((width - 1) % 48)) / 48;
   const globalWorkItems = workItemsPerGroup * height;
 
-  const context = addon.createContext({
+  const context = await addon.createContext({
     platformIndex: platformIndex, 
     deviceIndex: deviceIndex
   });
@@ -491,8 +491,8 @@ async function noden() {
   return [i1, o2];
 }
 noden()
-  .then(([i, o]) => { return [i.creationTime, o.creationTime] }, console.error)
-  .then(([ict, oct]) => { if (global.gc()) global.gc(); console.log(ict, oct); })
+  .then(([i, o]) => { return [i.creationTime, o.creationTime] })
+  .then(([ict, oct]) => { if (global.gc) global.gc(); console.log(ict, oct); })
   .catch( console.error );
   // .then(([i, o]) => { console.log(i.creationTime, o.creationTime); return }, console.error)
   // .then(() => { if (global.gc()) global.gc(); });

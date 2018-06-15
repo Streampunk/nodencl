@@ -23,9 +23,10 @@ napi_value Init(napi_env env, napi_value exports) {
   napi_status status;
   napi_property_descriptor desc[] = {
     DECLARE_NAPI_METHOD("getPlatformInfo", getPlatformInfo),
-    DECLARE_NAPI_METHOD("createContext", createContext),
+    DECLARE_NAPI_METHOD("findFirstGPU", findFirstGPU),
+    DECLARE_NAPI_METHOD("createContext", createContext)
    };
-  status = napi_define_properties(env, exports, 2, desc);
+  status = napi_define_properties(env, exports, 3, desc);
   CHECK_STATUS;
 
   return exports;

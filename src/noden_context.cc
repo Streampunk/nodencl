@@ -19,7 +19,6 @@
     #include "CL/cl.h"
 #endif
 #include "noden_context.h"
-#include "noden_util.h"
 #include "noden_info.h"
 #include "noden_program.h"
 #include "noden_buffer.h"
@@ -38,8 +37,76 @@ void finalizeCommands(napi_env env, void* data, void* hint) {
   if (error != CL_SUCCESS) printf("Failed to release CL queue.\n");
 }
 
+void createContextExecute(napi_env env, void* data) {
+  createContextCarrier* c = (createContextCarrier*) data;
+  cl_int error;
+
+  HR_TIME_POINT start = NOW;
+
+  cl_device_id contextDevices[1];
+  contextDevices[0] = c->deviceId;
+  cl_context_properties properties[] =
+    { CL_CONTEXT_PLATFORM, (cl_context_properties)c->platformId, 0 };
+  c->context = clCreateContext(properties, 1, contextDevices, nullptr, nullptr, &error);
+  ASYNC_CL_ERROR;
+
+  c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
+  ASYNC_CL_ERROR;
+
+  c->totalTime = microTime(start);
+}
+
+void createContextComplete(napi_env env, napi_status asyncStatus, void* data) {
+  createContextCarrier* c = (createContextCarrier*) data;
+
+  printf("Context created with status %i.\n", asyncStatus);
+
+  if (asyncStatus != napi_ok) {
+    c->status = asyncStatus;
+    c->errorMsg = "Async context creation failed to complete.";
+  }
+  REJECT_STATUS;
+
+  napi_value result;
+  c->status = napi_get_reference_value(env, c->passthru, &result);
+  REJECT_STATUS;
+
+  napi_value context;
+  c->status = napi_create_external(env, c->context, finalizeContext, nullptr, &context);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "context", context);
+  REJECT_STATUS;
+
+  napi_value commands;
+  c->status = napi_create_external(env, c->commands, finalizeCommands, nullptr, &commands);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "commands", commands);
+  REJECT_STATUS;
+
+  napi_value createProgramValue;
+  c->status = napi_create_function(env, "createProgram", NAPI_AUTO_LENGTH,
+    createProgram, nullptr, &createProgramValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "createProgram", createProgramValue);
+  REJECT_STATUS;
+
+  napi_value createBufValue;
+  c->status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
+    createBuffer, nullptr, &createBufValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "createBuffer", createBufValue);
+  REJECT_STATUS;
+
+  napi_status status;
+  status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
+
+  tidyCarrier(env, c);
+}
+
 napi_value createContext(napi_env env, napi_callback_info info) {
   napi_status status;
+  createContextCarrier* carrier = new createContextCarrier;
 
   napi_value args[2];
   size_t argc = 2;
@@ -149,11 +216,11 @@ napi_value createContext(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  cl_platform_id platformId = platformIds[platformIndex];
-  cl_device_id deviceId = deviceIds[deviceIndex];
+  carrier->platformId = platformIds[platformIndex];
+  carrier->deviceId = deviceIds[deviceIndex];
 
   cl_ulong svmCaps;
-  error = clGetDeviceInfo(deviceId, CL_DEVICE_SVM_CAPABILITIES, sizeof(cl_ulong), &svmCaps, nullptr);
+  error = clGetDeviceInfo(carrier->deviceId, CL_DEVICE_SVM_CAPABILITIES, sizeof(cl_ulong), &svmCaps, nullptr);
   if (error == CL_INVALID_VALUE) {
     svmCaps = 0;
   } else {
@@ -170,52 +237,32 @@ napi_value createContext(napi_env env, napi_callback_info info) {
   status = napi_set_named_property(env, context, "svmCaps", svmValue);
   CHECK_STATUS;
 
-  cl_device_id contextDevices[1];
-  contextDevices[0] = deviceId;
-  cl_context_properties properties[] =
-    { CL_CONTEXT_PLATFORM, (cl_context_properties)platformId, 0 };
-  cl_context clContext = clCreateContext(properties, 1, contextDevices, nullptr, nullptr, &error);
-  CHECK_CL_ERROR;
-
-  cl_command_queue commands = clCreateCommandQueue(clContext, deviceId, 0, &error);
-  CHECK_CL_ERROR;
-
-  napi_value jsContext;
-  status = napi_create_external(env, clContext, finalizeContext, nullptr, &jsContext);
-  CHECK_STATUS;
-  status = napi_set_named_property(env, context, "context", jsContext);
-  CHECK_STATUS;
-
-  napi_value jsCommands;
-  status = napi_create_external(env, commands, finalizeCommands, nullptr, &jsCommands);
-  CHECK_STATUS;
-  status = napi_set_named_property(env, context, "commands", jsCommands);
-  CHECK_STATUS;
-
   status = napi_set_named_property(env, context, "platformIndex", platformValue);
   CHECK_STATUS;
   status = napi_set_named_property(env, context, "deviceIndex", deviceValue);
   CHECK_STATUS;
 
   napi_value deviceIdValue;
-  status = napi_create_external(env, deviceId, nullptr, nullptr, &deviceIdValue);
+  status = napi_create_external(env, carrier->deviceId, nullptr, nullptr, &deviceIdValue);
   CHECK_STATUS;
   status = napi_set_named_property(env, context, "deviceId", deviceIdValue);
   CHECK_STATUS;
 
-  napi_value createProgramValue;
-  status = napi_create_function(env, "createProgram", NAPI_AUTO_LENGTH,
-    createProgram, nullptr, &createProgramValue);
-  CHECK_STATUS;
-  status = napi_set_named_property(env, context, "createProgram", createProgramValue);
+  status = napi_create_reference(env, context, 1, &carrier->passthru);
   CHECK_STATUS;
 
-  napi_value createBufValue;
-  status = napi_create_function(env, "createBuffer", NAPI_AUTO_LENGTH,
-    createBuffer, nullptr, &createBufValue);
-  CHECK_STATUS;
-  status = napi_set_named_property(env, context, "createBuffer", createBufValue);
+  napi_value promise;
+  status = napi_create_promise(env, &carrier->_deferred, &promise);
   CHECK_STATUS;
 
-  return context;
+  napi_value resource_name;
+  status = napi_create_string_utf8(env, "CreateContext", NAPI_AUTO_LENGTH, &resource_name);
+  CHECK_STATUS;
+  status = napi_create_async_work(env, NULL, resource_name, createContextExecute,
+    createContextComplete, carrier, &carrier->_request);
+  CHECK_STATUS;
+  status = napi_queue_async_work(env, carrier->_request);
+  CHECK_STATUS;
+
+  return promise;
 }

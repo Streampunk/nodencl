@@ -46,11 +46,6 @@ void tidyBuffer(napi_env env, void* data, void* hint) {
       break;
   }
 
-  // Lifetime of the buffer is over, so associated program can go.
-  napi_status status;
-  status = napi_delete_reference(env, h->program);
-  FLOATING_STATUS;
-
   delete h;
 }
 
@@ -101,20 +96,14 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
 
   if (asyncStatus != napi_ok) {
     c->status = asyncStatus;
-    c->errorMsg = "Async build of program failed to complete.";
+    c->errorMsg = "Async buffer creation failed to complete.";
   }
-  REJECT_STATUS;
-
-  napi_value programValue;
-  c->status = napi_get_reference_value(env, c->passthru, &programValue);
   REJECT_STATUS;
 
   napi_value result;
   tidyHint* hint = new tidyHint;
   hint->context = c->context;
   strcpy(hint->svmType, c->svmType);
-  c->status = napi_create_reference(env, programValue, 0, &hint->program);
-  REJECT_STATUS;
   c->status = napi_create_external_buffer(env, c->numBytes, c->data, &tidyBuffer, hint, &result);
   REJECT_STATUS;
 

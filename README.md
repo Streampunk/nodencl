@@ -121,20 +121,34 @@ const kernel = `__kernel void square(
 }`;
 ```
 
-Create an OpenCL program using the `nodencl.createProgram()` function. This returns a promise that resolves to an OpenCL _context_ and a compiled kernel for an OpenCL _program_ as a program object.
+Create an OpenCL context using the `nodencl.createContext()` function. This returns a promise that resolves to an OpenCL _context_ which includes a single command queue for supporting OpenCL programs and memory buffers on a single platform and device.
 
 ```Javascript
-let progPromise = nodencl.createProgram(kernel);
+let contextPromise = nodencl.createContext();
+contextPromise.then(context => ..., console.error);
+```
+The object returned by the method contains the native OpenCL structures required to support creating programs, kernels and memory buffers. In this default mode with no options, the first device on the system that is of type GPU is selected. This can also be determined by calling the `nodencl.findFirstGPU()` function.
+
+To select a specific device options can be provided as an argument to `createContext()`. The options must include a numerical `platformIndex` and `deviceIndex` that are the indexes into the array of platform details, then the `devices` property of each platform, as returned by `getPlatformInfo()`. For example:
+
+```Javascript
+let contextPromise = nodencl.createContext(kernel,
+  { platformIndex: 1, deviceIndex: 0 });
+contextPromise.then(context => ..., console.error);
+```
+
+Create an OpenCL program using the `context.createProgram()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to an OpenCL compiled kernel for an OpenCL _program_ as a program object.
+
+```Javascript
+let progPromise = context.createProgram(kernel);
 progPromise.then(program => ..., console.error);
 ```
 
-The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. In this default mode with no options, the first device on the system that is of type GPU is selected. This can also be determined by calling the `nodencl.findFirstGPU()` function.
-
-To select a specific device or to explicitly name the function in the kernel code that is the entry point for the kernel (e.g. `square` in the example above), options can be provided as the second argument to `createProgram()`. The options must include a numerical `platformIndex` and `deviceIndex` that are the indexes into the array of platform details, then the `devices` property of each platform, as returned by `getPlatformInfo()`. The `name` property gives the name of the kernel entry point function. For example:
+The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. To explicitly name the function in the kernel code that is the entry point for the kernel (e.g. `square` in the example above), options can be provided as the second argument to `createProgram()`. The `name` property gives the name of the kernel entry point function. For example:
 
 ```Javascript
-let progPromise = nodencl.createProgram(kernel,
-  { platformIndex: 1, deviceIndex: 0, name: 'square' });
+let progPromise = context.createProgram(kernel,
+  { name: 'square' });
 progPromise.then(program => ..., console.error);
 ```
 
@@ -142,25 +156,27 @@ progPromise.then(program => ..., console.error);
 
 OpenCL buffers allow data to be exchanged between the Node.JS program and the execution context of the Open CL kernel, managing either the transfer of data between system RAM and graphics RAM or the sharing of virtual memory between devices. Once created, the data buffer is wrapped in a Node.JS Buffer object that can be used like any other. When the OpenCL program is executed, nodencl takes care of passing the data to and from kernel device.
 
-To create a data buffer, use the `program.createBuffer()` method of the program object returned by `nodencl.createProgram()`. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
+To create a data buffer, use the `context.createBuffer()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
 
 ```Javascript
-let inputBuffer = await program.createBuffer(65536);
-let outputBuffer = await program.createBuffer(9000, 'fine');
+let inputBuffer = await context.createBuffer(65536, 'in');
+let outputBuffer = await context.createBuffer(9000, 'out', 'fine');
 ```
 
 ... or to execute in parallel ...
 
 ```Javascript
 let [inputBuffer, outuputBuffer] = await Promise.all([
-  program.createBuffer(65536),
-  program.createBuffer(9000, 'fine')
+  context.createBuffer(65536, 'in'),
+  context.createBuffer(9000, 'out', 'fine')
 ]);
 ```
 
 The first argument is the size of the buffer in bytes. Internally, a slightly larger buffer may be allocated of a size divisible by the kernel workgroup size, although that detail is not exposed into Javascript.
 
-The second optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). When this argument is not present, the default value is the expected-to-be-fastest kind of memory supported by the device.
+The second argument describes the direction of the buffer with respect to the kernel function - either 'in' for input or 'out' for output.
+
+The third optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). When this argument is not present, the default value is the expected-to-be-fastest kind of memory supported by the device.
 
 Note that further development of the API is intended to add support for Javascript typed arrays.
 

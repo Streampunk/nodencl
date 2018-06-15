@@ -22,6 +22,14 @@
     #include "CL/cl.h"
 #endif
 #include "node_api.h"
+#include "noden_util.h"
+
+struct createContextCarrier : carrier {
+  cl_platform_id platformId;
+  cl_device_id deviceId;
+  cl_context context;
+  cl_command_queue commands;
+};
 
 napi_value createContext(napi_env env, napi_callback_info info);
 
