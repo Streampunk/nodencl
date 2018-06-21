@@ -156,27 +156,36 @@ progPromise.then(program => ..., console.error);
 
 OpenCL buffers allow data to be exchanged between the Node.JS program and the execution context of the Open CL kernel, managing either the transfer of data between system RAM and graphics RAM or the sharing of virtual memory between devices. Once created, the data buffer is wrapped in a Node.JS Buffer object that can be used like any other. When the OpenCL program is executed, nodencl takes care of passing the data to and from kernel device.
 
-To create a data buffer, use the `context.createBuffer()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
+To create a data buffer, use the `context.createBuffer()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to an object that includes a method to access a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
 
 ```Javascript
-let inputBuffer = await context.createBuffer(65536, 'in');
-let outputBuffer = await context.createBuffer(9000, 'out', 'fine');
+let input = await context.createBuffer(65536, 'readonly');
+let output = await context.createBuffer(9000, 'writeonly', 'fine');
 ```
 
 ... or to execute in parallel ...
 
 ```Javascript
-let [inputBuffer, outuputBuffer] = await Promise.all([
-  context.createBuffer(65536, 'in'),
-  context.createBuffer(9000, 'out', 'fine')
+let [input, outuput] = await Promise.all([
+  context.createBuffer(65536, 'readonly'),
+  context.createBuffer(9000, 'writeonly', 'fine')
 ]);
 ```
 
 The first argument is the size of the buffer in bytes. Internally, a slightly larger buffer may be allocated of a size divisible by the kernel workgroup size, although that detail is not exposed into Javascript.
 
-The second argument describes the direction of the buffer with respect to the kernel function - either 'in' for input or 'out' for output.
+The second argument describes the intended use of the buffer with respect to execution of kernel functions - either 'readonly' for input parameters, 'writeonly' for output parameters or 'readwrite' if the buffer will be used in both directions.
 
 The third optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). When this argument is not present, the default value is the expected-to-be-fastest kind of memory supported by the device.
+
+In order to gain access to the buffer itself for read and write operations in Javascript, use the `buffer.hostAccess()` method of the buffer object. This returns a promise that resolves to a buffer. For example:
+
+```Javascript
+let inputBuf = await input.hostAccess('writeonly');
+```
+The optional argument describes the intended host access required: '`readwrite`' is the default if no parameter is provided, '`writeonly`' to be able to fill the buffer, '`readonly`' to be able to read from the buffer.
+
+Once access to the buffer is complete, use the `hostAccess.release()` method of the hostAccess object returned by `buffer.hostAccess()`. This method must be called for all hostAccess objects before passing the buffer object to a kernel function.
 
 Note that further development of the API is intended to add support for Javascript typed arrays.
 
@@ -185,7 +194,7 @@ Note that further development of the API is intended to add support for Javascri
 To run the kernel having created a program object, created the input and output data buffers and set the values of the input buffer as required, call the program object's `program.run()` method. The argument is an object with key names that must match the kernel parameter names and values whose type is compatible with those of the kernel program. This returns a promise that resolves to an object containing timing measurements for the execution. For example, in the body if an ES6 _async_ function:
 
 ```Javascript
-let execTimings = await program.run({input: inputBuffer, output: outputBuffer});
+let execTimings = await program.run({input: input, output: output});
 console.log(JSON.stringify(execTimings, null, 2));
 ```
 

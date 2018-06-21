@@ -66,6 +66,7 @@ napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
 #define NODEN_SUCCESS 0
 
 struct carrier {
+  virtual ~carrier() {}
   napi_ref passthru = nullptr;
   int32_t status = NODEN_SUCCESS;
   std::string errorMsg;

@@ -38,16 +38,13 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (param->isBuf) {
-      if (NODEN_SVM_NONE_CHAR == param->bufType) {
-        param->buffer = clCreateBuffer(c->context, (param->bufIsInput?CL_MEM_READ_ONLY:CL_MEM_WRITE_ONLY) | CL_MEM_ALLOC_HOST_PTR,
-          param->bufSize, nullptr, &error);
-        ASYNC_CL_ERROR;
-      }
-      if (!inputSize && param->bufIsInput)
-        inputSize = (size_t)param->bufSize;
+      param->gpuAccess = param->value.nodenBuf->getGPUBuffer(error); // allocates GPU buffer for 'NONE' type buffers
+      ASYNC_CL_ERROR;
+      if (!inputSize)
+        inputSize = (size_t)param->value.nodenBuf->numBytes();
     }
   }
-
+  
   // printf("Took %lluus to create GPU buffers.\n", microTime(bufAlloc));
   HR_TIME_POINT start = NOW;
   HR_TIME_POINT dataToKernelStart = start;
@@ -56,46 +53,25 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (param->isBuf) {
-      if (NODEN_SVM_COARSE_CHAR == param->bufType) {
-        error = clEnqueueSVMUnmap(c->commands, param->value.ptr, 0, 0, 0);
-        ASYNC_CL_ERROR;
-      }
-
-      if (NODEN_SVM_NONE_CHAR != param->bufType) {
-        error = clSetKernelArgSVMPointer(c->kernel, p, param->value.ptr);
-        ASYNC_CL_ERROR;
-      } else {
-        if (param->bufIsInput) {
-          error = clEnqueueWriteBuffer(c->commands, param->buffer, CL_TRUE, 0, param->bufSize,
-            param->value.ptr, 0, nullptr, nullptr);
-          ASYNC_CL_ERROR;
-        }
-        error = clSetKernelArg(c->kernel, p, sizeof(cl_mem), &param->buffer);
-        ASYNC_CL_ERROR;
-      }
+      error = param->gpuAccess->setKernelParam(c->kernel, p);
+      ASYNC_CL_ERROR;
     }
   }
 
   for (auto& paramIter: c->kernelParams) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
-    if (0 == param->type.compare("uint")) {
+    if (0 == param->type.compare("uint"))
       error = clSetKernelArg(c->kernel, p, sizeof(uint32_t), &param->value.uint32);
-      ASYNC_CL_ERROR;
-    } else if (0 == param->type.compare("int")) {
+    else if (0 == param->type.compare("int"))
       error = clSetKernelArg(c->kernel, p, sizeof(int32_t), &param->value.int32);
-      ASYNC_CL_ERROR;
-    } else if (0 == param->type.compare("long")) {
+    else if (0 == param->type.compare("long"))
       error = clSetKernelArg(c->kernel, p, sizeof(int64_t), &param->value.int64);
-      ASYNC_CL_ERROR;
-    } else if (0 == param->type.compare("float")) {
+    else if (0 == param->type.compare("float"))
       error = clSetKernelArg(c->kernel, p, sizeof(float), &param->value.dbl);
-      ASYNC_CL_ERROR;
-    } else if (0 == param->type.compare("double")) {
+    else if (0 == param->type.compare("double"))
       error = clSetKernelArg(c->kernel, p, sizeof(double), &param->value.dbl);
-      ASYNC_CL_ERROR;
-    }
-    ++p;
+    ASYNC_CL_ERROR;
   }
 
   c->dataToKernel = microTime(dataToKernelStart);
@@ -112,32 +88,18 @@ void runExecute(napi_env env, void* data) {
   c->kernelExec = microTime(kernelExecStart);
   HR_TIME_POINT dataFromKernelStart = NOW;
 
-  for (auto& paramIter: c->kernelParams) {
-    kernelParam* param = paramIter.second;
-    if (param->isBuf) {
-      if (NODEN_SVM_COARSE_CHAR == param->bufType) {
-        error = clEnqueueSVMMap(c->commands, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, param->value.ptr, param->bufSize, 0, 0, 0);
-        ASYNC_CL_ERROR;
-      }
-
-      if (!param->bufIsInput && (NODEN_SVM_NONE_CHAR == param->bufType)) {
-        error = clEnqueueReadBuffer(c->commands, param->buffer, CL_TRUE, 0,
-          param->bufSize, param->value.ptr, 0, nullptr, nullptr);
-        ASYNC_CL_ERROR;
-      }
-    }
-  }
+  // for (auto& paramIter: c->kernelParams) {
+  //   uint32_t p = paramIter.first;
+  //   kernelParam* param = paramIter.second;
+  //   if (param->isBuf && (eMemFlags::WRITEONLY == param->value.nodenBuf->memFlags())) {
+  //     param->gpuAccess.reset();
+  //     param->value.nodenBuf->getHostBuffer(error);
+  //     ASYNC_CL_ERROR;
+  //   }
+  // }
 
   c->dataFromKernel = microTime(dataFromKernelStart);
   c->totalTime = microTime(start);
-
-  for (auto& paramIter: c->kernelParams) {
-    kernelParam* param = paramIter.second;
-    if (param->isBuf && (NODEN_SVM_NONE_CHAR == param->bufType)) {
-      error = clReleaseMemObject(param->buffer);
-      ASYNC_CL_ERROR;
-    }
-  }
 }
 
 void runComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -289,40 +251,13 @@ napi_value run(napi_env env, napi_callback_info info) {
       }
       break;
     case napi_object:
-      bool isBuffer;
-      status = napi_is_buffer(env, paramValue, &isBuffer);
+      kp->isBuf = true;
+      kp->type = std::string("ptr");
+      napi_value nodenBufValue;
+      status = napi_get_named_property(env, paramValue, "nodenBuf", &nodenBufValue);
       CHECK_STATUS;
-      if (isBuffer) {
-        kp->isBuf = true;
-        kp->type = std::string("ptr");
-        size_t length;
-        status = napi_get_buffer_info(env, paramValue, &kp->value.ptr, &length);
-        CHECK_STATUS;
-
-        napi_value numBytesValue;
-        status = napi_get_named_property(env, paramValue, "numBytes", &numBytesValue);
-        CHECK_STATUS;
-        status = napi_get_value_uint32(env, numBytesValue, &kp->bufSize);
-        CHECK_STATUS;
-
-        napi_value bufTypeValue;
-        status = napi_get_named_property(env, paramValue, "sharedMemType", &bufTypeValue);
-        CHECK_STATUS;
-        
-        char bufType[10];
-        status = napi_get_value_string_utf8(env, bufTypeValue, bufType, 10, nullptr);
-        CHECK_STATUS;
-        kp->bufType = bufType[0];
-
-        napi_value bufDirValue;
-        status = napi_get_named_property(env, paramValue, "isInput", &bufDirValue);
-        CHECK_STATUS;
-        status = napi_get_value_bool(env, bufDirValue, &kp->bufIsInput);
-        CHECK_STATUS;
-      } else {
-        status = napi_throw_type_error(env, nullptr, "Unsupported object parameter type");
-        return nullptr;
-      }
+      status = napi_get_value_external(env, nodenBufValue, (void**)&kp->value.nodenBuf);
+      CHECK_STATUS;
       break;
     default:
       printf("Unsupported parameter value type: \'%d\'\n", valueType);

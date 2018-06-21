@@ -26,6 +26,7 @@
 #include <map>
 #include "node_api.h"
 #include "noden_util.h"
+#include "noden_buffer.h"
 
 struct kernelParam {
   std::string name;
@@ -36,12 +37,9 @@ struct kernelParam {
     int32_t int32;
     int64_t int64;
     double dbl;
-    void* ptr;
+    iNodenBuffer* nodenBuf;
   } value;
-  uint32_t bufSize;
-  char bufType = 'n';
-  bool bufIsInput;
-  cl_mem buffer;
+  std::shared_ptr<iGpuBuffer> gpuAccess;
 };
 
 struct runCarrier : carrier {
@@ -56,8 +54,6 @@ struct runCarrier : carrier {
   cl_kernel kernel;
 };
 
-// void runExecute(napi_env env, void* data);
-// void runComplete(napi_env env, napi_status status, void* data);
 napi_value run(napi_env env, napi_callback_info info);
 
 #endif
