@@ -185,7 +185,11 @@ let inputBuf = await input.hostAccess('writeonly');
 ```
 The optional argument describes the intended host access required: '`readwrite`' is the default if no parameter is provided, '`writeonly`' to be able to fill the buffer, '`readonly`' to be able to read from the buffer.
 
-Once access to the buffer is complete, use the `hostAccess.release()` method of the hostAccess object returned by `buffer.hostAccess()`. This method must be called for all hostAccess objects before passing the buffer object to a kernel function.
+Once access to the buffer is complete, use the `hostAccess.release()` method of the hostAccess object returned by `buffer.hostAccess()`.
+```Javascript
+inputBuf.release();
+```
+This method must be called for all hostAccess objects before the associated buffers are passed as arguments to a kernel function.
 
 Note that further development of the API is intended to add support for Javascript typed arrays.
 
