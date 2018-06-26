@@ -59,7 +59,6 @@ void buildExecute(napi_env env, void* data) {
   buildCarrier* c = (buildCarrier*) data;
   cl_int error;
 
-  printf("Execution starting\n");
   printf("globalWorkItems: %zd, workItemsPerGroup: %zd\n", c->globalWorkItems, c->workItemsPerGroup);
   HR_TIME_POINT start = NOW;
 
@@ -253,11 +252,12 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
 
   // parse the program parameters
   std::string ks(carrier->kernelSource);
-  size_t startParams = ks.find('(') + 1;
-  std::string paramStr(ks.substr(startParams, ks.find(')') - startParams));
+  size_t progStart = ks.find(carrier->name);
+  size_t startParams = ks.find('(', progStart) + 1;
+  std::string paramStr(ks.substr(startParams, ks.find(')', progStart) - startParams));
+
   std::vector<std::string> params;
   tokenise(paramStr, std::regex(",+"), params);
-  uint32_t pm=0;
   for (auto& param: params) {
     std::vector<std::string> paramTokens;
     tokenise(param, std::regex("\\s+"), paramTokens);

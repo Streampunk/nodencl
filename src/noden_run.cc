@@ -93,7 +93,7 @@ void runExecute(napi_env env, void* data) {
   //   kernelParam* param = paramIter.second;
   //   if (param->isBuf && (eMemFlags::WRITEONLY == param->value.nodenBuf->memFlags())) {
   //     param->gpuAccess.reset();
-  //     param->value.nodenBuf->getHostBuffer(error);
+  //     param->value.nodenBuf->getHostBuffer(error, eMemFlags::READONLY);
   //     ASYNC_CL_ERROR;
   //   }
   // }
