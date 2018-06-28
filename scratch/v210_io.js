@@ -21,7 +21,7 @@ const v210Kernel = `
                      __private unsigned int width,
                      __constant float4* colMatrix,
                      __global float* gammaLut,
-                     __constant float3* gamutMatrix) {
+                     __constant float* gamutMatrix) {
     uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
@@ -37,9 +37,9 @@ const v210Kernel = `
     float4 colMatG = colMatrix[1];
     float4 colMatB = colMatrix[2];
 
-    float3 gamutMatR = gamutMatrix[0];
-    float3 gamutMatG = gamutMatrix[1];
-    float3 gamutMatB = gamutMatrix[2];
+    float3 gamutMatR = (float3)(gamutMatrix[0], gamutMatrix[1], gamutMatrix[2]);
+    float3 gamutMatG = (float3)(gamutMatrix[3], gamutMatrix[4], gamutMatrix[5]);
+    float3 gamutMatB = (float3)(gamutMatrix[6], gamutMatrix[7], gamutMatrix[8]);
 
     for (uint i=0; i<numLoops; ++i) {
       uint4 w = input[inOff];
@@ -256,7 +256,7 @@ function reader(context, width, height, colSpec, outColSpec) {
 
   const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec);
   this.gamutMatrixArray = new Float32Array(gamutMatrix2d.length * gamutMatrix2d[0].length);
-  gamutMatrix2d.forEach((r, ri) => r.forEach((c, ci) => this.gamutMatrixArray[ci*gamutMatrix2d.length+ri] = c)); // transpose for the OpenCL kernel
+  gamutMatrix2d.forEach((r, ri) => r.forEach((c, ci) => this.gamutMatrixArray[ri*gamutMatrix2d[0].length+ci] = c));
 
   return this;
 }

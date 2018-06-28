@@ -212,7 +212,7 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
 }
 
 function rgb2rgbMatrix(srcColSpec, dstColSpec) {
-  return matrixMultiply(rgb2xyzMatrix(srcColSpec), xyz2rgbMatrix(dstColSpec));
+  return matrixMultiply(xyz2rgbMatrix(dstColSpec), rgb2xyzMatrix(srcColSpec));
 }
 
 function rgb2xyzMatrix(colSpec) {

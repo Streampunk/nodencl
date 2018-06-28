@@ -39,7 +39,7 @@ async function noden() {
   });
 
   const colSpecRead = '709';
-  const colSpecWrite = '709';
+  const colSpecWrite = '2020';
   const width = 1920;
   const height = 1080;
 
