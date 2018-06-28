@@ -113,27 +113,6 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const chrNull = 128.0 << (numBits - 8);
   const lumaRange = lumaWhite - lumaBlack;
 
-  const Yy = 1.0 / lumaRange;
-  const Uy = 0.0;
-  const Vy = 0.0;
-  const Oy = - lumaBlack / lumaRange;
-
-  const Yu = 0.0;
-  const Uu = 1.0 / chrRange / 2;
-  const Vu = 0.0;
-  const Ou = - chrNull / chrRange / 2;
-
-  const Yv = 0.0;
-  const Uv = 0.0;
-  const Vv = 1.0 / chrRange / 2;
-  const Ov = - chrNull / chrRange / 2;
-
-  const scaleMatrix = [...new Array(4)].map(e => new Float32Array(3));
-  scaleMatrix[0] = Float32Array.from([Yy, Yu, Yv]);
-  scaleMatrix[1] = Float32Array.from([Uy, Uu, Uv]);
-  scaleMatrix[2] = Float32Array.from([Vy, Vu, Vv]);
-  scaleMatrix[3] = Float32Array.from([Oy, Ou, Ov]);
-
   const kR = colParams[colSpec].kR;
   const kB = colParams[colSpec].kB;
   const kG = 1.0 - kR - kB;
@@ -151,11 +130,31 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Vb = 0.0;
 
   const colMatrix = [...new Array(3)].map(e => new Float32Array(3));
-  colMatrix[0] = Float32Array.from([Yr, Yg, Yb]);
-  colMatrix[1] = Float32Array.from([Ur, Ug, Ub]);
-  colMatrix[2] = Float32Array.from([Vr, Vg, Vb]);
+  colMatrix[0] = Float32Array.from([Yr, Ur, Vr]);
+  colMatrix[1] = Float32Array.from([Yg, Ug, Vg]);
+  colMatrix[2] = Float32Array.from([Yb, Ub, Vb]);
 
-  return matrixMultiply(scaleMatrix, colMatrix);
+  const Yy = 1.0 / lumaRange;
+  const Uy = 0.0;
+  const Vy = 0.0;
+  const Oy = - lumaBlack / lumaRange;
+
+  const Yu = 0.0;
+  const Uu = 1.0 / chrRange / 2;
+  const Vu = 0.0;
+  const Ou = - chrNull / chrRange / 2;
+
+  const Yv = 0.0;
+  const Uv = 0.0;
+  const Vv = 1.0 / chrRange / 2;
+  const Ov = - chrNull / chrRange / 2;
+
+  const scaleMatrix = [...new Array(3)].map(e => new Float32Array(4));
+  scaleMatrix[0] = Float32Array.from([Yy, Uy, Vy, Oy]);
+  scaleMatrix[1] = Float32Array.from([Yu, Uu, Vu, Ou]);
+  scaleMatrix[2] = Float32Array.from([Yv, Uv, Vv, Ov]);
+
+  return matrixMultiply(colMatrix, scaleMatrix);
 }
 
 function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
@@ -169,6 +168,23 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const kR = colParams[colSpec].kR;
   const kB = colParams[colSpec].kB;
   const kG = 1.0 - kR - kB;
+
+  const Yy = lumaRange;
+  const Uy = 0.0;
+  const Vy = 0.0;
+
+  const Yu = 0.0;
+  const Uu = chrRange / 2;
+  const Vu = 0.0;
+
+  const Yv = 0.0;
+  const Uv = 0.0;
+  const Vv = chrRange / 2;
+
+  const scaleMatrix = [...new Array(3)].map(e => new Float32Array(3));
+  scaleMatrix[0] = Float32Array.from([Yy, Uy, Vy]);
+  scaleMatrix[1] = Float32Array.from([Yu, Uu, Vu]);
+  scaleMatrix[2] = Float32Array.from([Yv, Uv, Vv]);
 
   const Ry = kR;
   const Gy = kG;
@@ -185,30 +201,12 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Bv = - kB / (1 - kR);
   const Ov = 2 * chrNull / chrRange;
 
-  const colMatrix = [...new Array(4)].map(e => new Float32Array(3));
-  colMatrix[0] = Float32Array.from([Ry, Ru, Rv]);
-  colMatrix[1] = Float32Array.from([Gy, Gu, Gv]);
-  colMatrix[2] = Float32Array.from([By, Bu, Bv]);
-  colMatrix[3] = Float32Array.from([Oy, Ou, Ov]);
+  const colMatrix = [...new Array(4)].map(e => new Float32Array(4));
+  colMatrix[0] = Float32Array.from([Ry, Gy, By, Oy]);
+  colMatrix[1] = Float32Array.from([Ru, Gu, Bu, Ou]);
+  colMatrix[2] = Float32Array.from([Rv, Gv, Bv, Ov]);
 
-  const Yy = lumaRange;
-  const Uy = 0.0;
-  const Vy = 0.0;
-
-  const Yu = 0.0;
-  const Uu = chrRange / 2;
-  const Vu = 0.0;
-
-  const Yv = 0.0;
-  const Uv = 0.0;
-  const Vv = chrRange / 2;
-
-  const scaleMatrix = [...new Array(3)].map(e => new Float32Array(3));
-  scaleMatrix[0] = Float32Array.from([Yy, Yu, Yv]);
-  scaleMatrix[1] = Float32Array.from([Uy, Uu, Uv]);
-  scaleMatrix[2] = Float32Array.from([Vy, Vu, Vv]);
-
-  return matrixMultiply(colMatrix, scaleMatrix);
+  return matrixMultiply(scaleMatrix, colMatrix);
 }
 
 function rgb2rgbMatrix(srcColSpec, dstColSpec) {
@@ -308,7 +306,7 @@ function matrixOfCofactors3x3(a) {
   });    
 }
 
-function matrixInvert3x3 (a) {
+function matrixInvert3x3(a) {
   if ((a.length != a[0].length) || (3 !== a.length))
     throw ("matrixInvert3x3 requires a 3 x 3 matrix");
   const minors = matrixOfMinors3x3(a);
@@ -318,6 +316,13 @@ function matrixInvert3x3 (a) {
   return scalarMultiply(adjugate, 1.0 / determinant);
 }
 
+function matrixFlatten(a) {
+  let result = new Float32Array(a.length * a[0].length);
+  return result.map((row, i) => {
+    return a[(i/a[0].length)>>>0][i%a[0].length];
+  });
+}
+
 module.exports = {
   ycbcr2rgbMatrix: ycbcr2rgbMatrix,
   rgb2ycbcrMatrix: rgb2ycbcrMatrix,
@@ -325,5 +330,7 @@ module.exports = {
   gamma2linearLUT: gamma2linearLUT,
   linear2gammaLUT: linear2gammaLUT,
 
-  rgb2rgbMatrix: rgb2rgbMatrix
+  rgb2rgbMatrix: rgb2rgbMatrix,
+
+  matrixFlatten: matrixFlatten
 };

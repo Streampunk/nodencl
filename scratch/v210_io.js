@@ -249,14 +249,12 @@ function reader(context, width, height, colSpec, outColSpec) {
   this.globalWorkItems = this.workItemsPerGroup * height;
 
   const colMatrix2d = colMaths.ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chromaRange);
-  this.colMatrixArray = new Float32Array(colMatrix2d.length * colMatrix2d[0].length);
-  colMatrix2d.forEach((r, ri) => r.forEach((c, ci) => this.colMatrixArray[ci*colMatrix2d.length+ri] = c)); // transpose for the OpenCL kernel
+  this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d);
 
   this.gammaArray = colMaths.gamma2linearLUT(colSpec);
 
   const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec);
-  this.gamutMatrixArray = new Float32Array(gamutMatrix2d.length * gamutMatrix2d[0].length);
-  gamutMatrix2d.forEach((r, ri) => r.forEach((c, ci) => this.gamutMatrixArray[ri*gamutMatrix2d[0].length+ci] = c));
+  this.gamutMatrixArray = colMaths.matrixFlatten(gamutMatrix2d);
 
   return this;
 }
@@ -303,8 +301,7 @@ function writer(context, width, height, colSpec) {
   this.globalWorkItems = this.workItemsPerGroup * height;
 
   const colMatrix2d = colMaths.rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chromaRange);
-  this.colMatrixArray = new Float32Array(colMatrix2d.length * colMatrix2d[0].length);
-  colMatrix2d.forEach((r, ri) => r.forEach((c, ci) => this.colMatrixArray[ci*colMatrix2d.length+ri] = c)); // transpose for the OpenCL kernel
+  this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d);
 
   this.gammaArray = colMaths.linear2gammaLUT(colSpec);
   return this;
