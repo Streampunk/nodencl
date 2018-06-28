@@ -19,10 +19,14 @@ const v210_io = require('./v210_io.js');
 const SegfaultHandler = require('segfault-handler');
 SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
 
-function dumpFloatBuf(buf, width, numLines) {
+function dumpFloatBuf(buf, width, numPixels, numLines) {
+  r = o => buf.readFloatLE(o).toFixed(4);
   for (let y=0; y<numLines; ++y) {
     const off = y*width*4*4;
-    console.log(`Line ${y}: ${buf.readFloatLE(off+0).toFixed(4)}, ${buf.readFloatLE(off+4).toFixed(4)}, ${buf.readFloatLE(off+8).toFixed(4)}, ${buf.readFloatLE(off+12).toFixed(4)}, ${buf.readFloatLE(off+16).toFixed(4)}, ${buf.readFloatLE(off+20).toFixed(4)}, ${buf.readFloatLE(off+24).toFixed(4)}, ${buf.readFloatLE(off+28).toFixed(4)}`);
+    let s = `Line ${y}: ${r(off)}`;
+    for (let i=1; i<numPixels*4; ++i)
+      s += `, ${r(off+i*4)}`;
+    console.log(s);
   }
 }
 
@@ -43,10 +47,10 @@ async function noden() {
   const width = 1920;
   const height = 1080;
 
-  const v210Reader = await new v210_io.reader(context, width, height, colSpecRead, colSpecWrite);
+  const v210Reader = new v210_io.reader(context, width, height, colSpecRead, colSpecWrite);
   await v210Reader.init();
 
-  const v210Writer = await new v210_io.writer(context, width, height, colSpecWrite);
+  const v210Writer = new v210_io.writer(context, width, height, colSpecWrite);
   await v210Writer.init();
 
   const numBytesV210 = v210_io.getPitchBytes(width) * height;
@@ -66,7 +70,7 @@ async function noden() {
   console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
   let rgbaDstBuf = await rgbaDst.hostAccess('readonly');
-  dumpFloatBuf(rgbaDstBuf, width, 4);
+  dumpFloatBuf(rgbaDstBuf, width, 2, 4);
   rgbaDstBuf.release();
 
   timings = await v210Writer.toV210(rgbaDst, v210Dst);

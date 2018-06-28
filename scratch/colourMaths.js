@@ -296,12 +296,12 @@ function matrixOfMinors3x3(a) {
 }
 function matrixOfCofactors3x3(a) {
   if ((a.length != a[0].length) || (3 !== a.length))
-    throw ("matrixOfMinors3x3 requires a 3 x 3 matrix");
+    throw ("matrixOfCofactors3x3 requires a 3 x 3 matrix");
 
   let result = [...new Float32Array(a.length)].map(e => new Float32Array(a.length));
   return result.map((row, i) => {
     return row.map((val, j) => {
-      return (0 === (i + j) % 2) ? a[i][j] : -a[i][j];
+      return a[i][j] * Math.pow(-1, i+j);
     });    
   });    
 }

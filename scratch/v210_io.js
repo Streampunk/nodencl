@@ -16,12 +16,12 @@
 const colMaths = require('./colourMaths.js');
 
 const v210Kernel = `
-  __kernel void read(__global uint4* input,
-                     __global float4* output,
+  __kernel void read(__global uint4* restrict input,
+                     __global float4* restrict output,
                      __private unsigned int width,
-                     __constant float4* colMatrix,
-                     __global float* gammaLut,
-                     __constant float* gamutMatrix) {
+                     __constant float4* restrict colMatrix,
+                     __global float* restrict gammaLut,
+                     __constant float4* restrict gamutMatrix) {
     uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
@@ -37,9 +37,13 @@ const v210Kernel = `
     float4 colMatG = colMatrix[1];
     float4 colMatB = colMatrix[2];
 
-    float3 gamutMatR = (float3)(gamutMatrix[0], gamutMatrix[1], gamutMatrix[2]);
-    float3 gamutMatG = (float3)(gamutMatrix[3], gamutMatrix[4], gamutMatrix[5]);
-    float3 gamutMatB = (float3)(gamutMatrix[6], gamutMatrix[7], gamutMatrix[8]);
+    // optimise loading of the 3x3 gamut matrix
+    float4 gamutMat0 = gamutMatrix[0];
+    float4 gamutMat1 = gamutMatrix[1];
+    float4 gamutMat2 = gamutMatrix[2];
+    float3 gamutMatR = (float3)(gamutMat0.s0, gamutMat0.s1, gamutMat0.s2);
+    float3 gamutMatG = (float3)(gamutMat0.s3, gamutMat1.s0, gamutMat1.s1);
+    float3 gamutMatB = (float3)(gamutMat1.s2, gamutMat1.s3, gamutMat2.s0);
 
     for (uint i=0; i<numLoops; ++i) {
       uint4 w = input[inOff];
@@ -100,11 +104,11 @@ const v210Kernel = `
     }
   }
 
-  __kernel void write(__global float4* input,
-                      __global uint4* output,
+  __kernel void write(__global float4* restrict input,
+                      __global uint4* restrict output,
                       __private unsigned int width,
-                      __constant float4* colMatrix,
-                      __global float* gammaLut) {
+                      __constant float4* restrict colMatrix,
+                      __global float* restrict gammaLut) {
     uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
@@ -265,7 +269,7 @@ reader.prototype.init = async function() {
   Buffer.from(this.colMatrixArray.buffer).copy(colMatrixBuf);
   colMatrixBuf.release();
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'none')
+  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
   let gammaBuf = await this.gammaLut.hostAccess('writeonly');
   Buffer.from(this.gammaArray.buffer).copy(gammaBuf);
   gammaBuf.release();
@@ -313,7 +317,7 @@ writer.prototype.init = async function() {
   Buffer.from(this.colMatrixArray.buffer).copy(colMatrixBuf);
   colMatrixBuf.release();
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'none')
+  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
   let gammaBuf = await this.gammaLut.hostAccess('writeonly');
   Buffer.from(this.gammaArray.buffer).copy(gammaBuf);
   gammaBuf.release();
