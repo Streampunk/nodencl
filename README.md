@@ -156,7 +156,7 @@ progPromise.then(program => ..., console.error);
 
 OpenCL buffers allow data to be exchanged between the Node.JS program and the execution context of the Open CL kernel, managing either the transfer of data between system RAM and graphics RAM or the sharing of virtual memory between devices. Once created, the data buffer is wrapped in a Node.JS Buffer object that can be used like any other. When the OpenCL program is executed, nodencl takes care of passing the data to and from kernel device.
 
-To create a data buffer, use the `context.createBuffer()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to an object that includes a method to access a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
+To create a data buffer, use the `context.createBuffer()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
 
 ```Javascript
 let input = await context.createBuffer(65536, 'readonly');
@@ -172,24 +172,21 @@ let [input, outuput] = await Promise.all([
 ]);
 ```
 
-The first argument is the size of the buffer in bytes. Internally, a slightly larger buffer may be allocated of a size divisible by the kernel workgroup size, although that detail is not exposed into Javascript.
+The first argument is normally the size of the desired buffer in bytes. Passing in an allocated buffer is supported in a special case - please see below for the details of this optimisation.
 
 The second argument describes the intended use of the buffer with respect to execution of kernel functions - either 'readonly' for input parameters, 'writeonly' for output parameters or 'readwrite' if the buffer will be used in both directions.
 
 The third optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). When this argument is not present, the default value is the expected-to-be-fastest kind of memory supported by the device.
 
-In order to gain access to the buffer itself for read and write operations in Javascript, use the `buffer.hostAccess()` method of the buffer object. This returns a promise that resolves to a buffer. For example:
+In order to allow normal host access to the buffer for read and write operations in Javascript, use the `buffer.hostAccess()` method of the buffer object. This returns a promise that resolves when host access is available. For example:
 
 ```Javascript
-let inputBuf = await input.hostAccess('writeonly');
+await input.hostAccess();
+await input.hostAccess('writeonly', srcBuf);
 ```
-The optional argument describes the intended host access required: '`readwrite`' is the default if no parameter is provided, '`writeonly`' to be able to fill the buffer, '`readonly`' to be able to read from the buffer.
+The optional first argument describes the intended host access required: '`readwrite`' is the default if no parameter is provided, '`writeonly`' to be able to fill the buffer, '`readonly`' to be able to read from the buffer.
 
-Once access to the buffer is complete, use the `hostAccess.release()` method of the hostAccess object returned by `buffer.hostAccess()`.
-```Javascript
-inputBuf.release();
-```
-This method must be called for all hostAccess objects before the associated buffers are passed as arguments to a kernel function.
+The optional second argument allows a source buffer to be passed to the asynchronous thread and be copied into the buffer object, the promise resolving once the copy is complete and the buffer object is ready for processing. The first argument is required when using this option.
 
 Note that further development of the API is intended to add support for Javascript typed arrays.
 

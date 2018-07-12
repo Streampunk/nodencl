@@ -265,19 +265,16 @@ function reader(context, width, height, colSpec, outColSpec) {
 
 reader.prototype.init = async function() {
   this.colMatrix = await this.context.createBuffer(this.colMatrixArray.byteLength, 'readonly', 'none');
-  let colMatrixBuf = await this.colMatrix.hostAccess('writeonly');
-  Buffer.from(this.colMatrixArray.buffer).copy(colMatrixBuf);
-  colMatrixBuf.release();
+  await this.colMatrix.hostAccess('writeonly');
+  Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
 
   this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
-  let gammaBuf = await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(gammaBuf);
-  gammaBuf.release();
+  await this.gammaLut.hostAccess('writeonly');
+  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
 
   this.gamutMatrix = await this.context.createBuffer(this.gamutMatrixArray.byteLength, 'readonly', 'none');
-  let gamutMatrixBuf = await this.gamutMatrix.hostAccess('writeonly');
-  Buffer.from(this.gamutMatrixArray.buffer).copy(gamutMatrixBuf);
-  gamutMatrixBuf.release();
+  await this.gamutMatrix.hostAccess('writeonly');
+  Buffer.from(this.gamutMatrixArray.buffer).copy(this.gamutMatrix);
 
   this.v210ReadProgram = await this.context.createProgram(v210Kernel, {
     name: 'read',
@@ -313,14 +310,12 @@ function writer(context, width, height, colSpec) {
 
 writer.prototype.init = async function() {
   this.colMatrix = await this.context.createBuffer(this.colMatrixArray.byteLength, 'readonly', 'none');
-  let colMatrixBuf = await this.colMatrix.hostAccess('writeonly');
-  Buffer.from(this.colMatrixArray.buffer).copy(colMatrixBuf);
-  colMatrixBuf.release();
+  await this.colMatrix.hostAccess('writeonly');
+  Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
 
   this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
-  let gammaBuf = await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(gammaBuf);
-  gammaBuf.release();
+  await this.gammaLut.hostAccess('writeonly');
+  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
 
   this.v210WriteProgram = await this.context.createProgram(v210Kernel, {
     name: 'write',

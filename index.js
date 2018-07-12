@@ -15,4 +15,7 @@
 
 const addon = require('bindings')('nodencl');
 
+const SegfaultHandler = require('segfault-handler');
+SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
+
 module.exports = addon;

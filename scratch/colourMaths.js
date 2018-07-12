@@ -201,7 +201,7 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Bv = - kB / (1.0 - kR);
   const Ov = chrNull / chrRange / 2.0;
 
-  const colMatrix = [...new Array(4)].map(e => new Float32Array(4));
+  const colMatrix = [...new Array(3)].map(e => new Float32Array(4));
   colMatrix[0] = Float32Array.from([Ry, Gy, By, Oy]);
   colMatrix[1] = Float32Array.from([Ru, Gu, Bu, Ou]);
   colMatrix[2] = Float32Array.from([Rv, Gv, Bv, Ov]);

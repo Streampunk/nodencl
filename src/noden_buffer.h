@@ -38,19 +38,12 @@ public:
   virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex) const = 0;
 };
 
-class iHostBuffer {
-public:
-  virtual ~iHostBuffer() {}
-
-  virtual void *buf() const = 0;
-};
-
 class iNodenBuffer {
 public:
   virtual ~iNodenBuffer() {}
 
-  virtual std::shared_ptr<iGpuBuffer> getGPUBuffer(cl_int &error) = 0; // allocates GPU buffer for 'NONE' type buffers
-  virtual std::shared_ptr<iHostBuffer> getHostBuffer(cl_int &error, eMemFlags hsFlags) = 0; // map/copy GPU buffer to host - host buffer is already created
+  virtual std::shared_ptr<iGpuBuffer> getGPUBuffer() = 0;
+  virtual void setHostAccess(cl_int &error, eMemFlags haFlags) = 0; // map GPU buffer to host
 
   virtual uint32_t numBytes() const = 0;
   virtual eMemFlags memFlags() const = 0;

@@ -43,6 +43,12 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   if (error != CL_SUCCESS) printf("Failed to release CL kernel.\n");
 }
 
+void tidyProgramContextRef(napi_env env, void* data, void* hint) {
+  napi_ref contextRef = (napi_ref)data;
+  printf("Finalizing a program context reference.\n");
+  napi_delete_reference(env, contextRef);
+}
+
 void tokenise(const std::string &str, const std::regex &regex, std::vector<std::string> &tokens)
 {
   std::sregex_token_iterator it(str.begin(), str.end(), regex, -1);
@@ -348,6 +354,15 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   carrier->deviceId = (cl_device_id) deviceIdData;
 
   status = napi_create_reference(env, program, 1, &carrier->passthru);
+  CHECK_STATUS;
+
+  napi_ref contextRef;
+  status = napi_create_reference(env, contextValue, 1, &contextRef);
+  CHECK_STATUS;
+  napi_value contextRefValue;
+  status = napi_create_external(env, (void*)contextRef, tidyProgramContextRef, nullptr, &contextRefValue);
+  CHECK_STATUS;
+  status = napi_set_named_property(env, program, "contextRef", contextRefValue);
   CHECK_STATUS;
 
   status = napi_create_promise(env, &carrier->_deferred, &promise);

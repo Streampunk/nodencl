@@ -61,29 +61,24 @@ async function noden() {
   
   const v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse');
 
-  let v210SrcBuf = await v210Src.hostAccess('writeonly');
-  v210_io.fillBuf(v210SrcBuf, width, height);
-  v210_io.dumpBuf(v210SrcBuf, width, 4);
-  v210SrcBuf.release();
+  await v210Src.hostAccess('writeonly');
+  v210_io.fillBuf(v210Src, width, height);
+  v210_io.dumpBuf(v210Src, width, 4);
 
   let timings = await v210Reader.fromV210(v210Src, rgbaDst);
   console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
-  let rgbaDstBuf = await rgbaDst.hostAccess('readonly');
-  dumpFloatBuf(rgbaDstBuf, width, 2, 4);
-  rgbaDstBuf.release();
+  await rgbaDst.hostAccess('readonly');
+  dumpFloatBuf(rgbaDst, width, 2, 4);
 
   timings = await v210Writer.toV210(rgbaDst, v210Dst);
   console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
-  let v210DstBuf = await v210Dst.hostAccess('readonly');
-  v210_io.dumpBuf(v210DstBuf, width, 4);
+  await v210Dst.hostAccess('readonly');
+  v210_io.dumpBuf(v210Dst, width, 4);
 
-  v210SrcBuf = await v210Src.hostAccess('readonly');
-  console.log('Compare returned', v210SrcBuf.compare(v210DstBuf));
-
-  v210SrcBuf.release();
-  v210DstBuf.release();
+  await v210Src.hostAccess('readonly');
+  console.log('Compare returned', v210Src.compare(v210Dst));
 
   return [v210Src, v210Dst];
 }

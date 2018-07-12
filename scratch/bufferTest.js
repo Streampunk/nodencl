@@ -453,18 +453,14 @@ async function noden() {
     context.createBuffer(2**16 * 4, 'readonly', 'none')
   ]);
 
-  let i1Buf = await i1.hostAccess('writeonly');
-  fillV210Buf(i1Buf, width, height);
-  dumpV210Buf(i1Buf, width, 4);
+  await i1.hostAccess('writeonly');
+  fillV210Buf(i1, width, height);
+  dumpV210Buf(i1, width, 4);
 
-  let m1Buf = await m1.hostAccess('writeonly');
-  ycbcr2rgbMatrix(m1Buf, '709', 10);
-  let g1Buf = await g1.hostAccess('writeonly');
-  gammaToLinearLUT(g1Buf, '709', 10);
-
-  i1Buf.release();
-  m1Buf.release();
-  g1Buf.release();
+  await m1.hostAccess('writeonly');
+  ycbcr2rgbMatrix(m1, '709', 10);
+  await g1.hostAccess('writeonly');
+  gammaToLinearLUT(g1, '709', 10);
 
   for (let x = 0; x < 10; x++) {
     let timings1 = await readV210program.run({input: i1, output: o1, width: width, matrix: m1, gammaToLinearLUT: g1});
@@ -472,12 +468,11 @@ async function noden() {
     // [o, i] = [i, o];
   }
 
-  let o1Buf = await o1.hostAccess('readonly');
+  await o1.hostAccess('readonly');
   for (let y=0; y<4; ++y) {
     const off = y*width*4*4;
-    console.log(`Line ${y}: ${o1Buf.readFloatLE(off+0).toFixed(4)}, ${o1Buf.readFloatLE(off+4).toFixed(4)}, ${o1Buf.readFloatLE(off+8).toFixed(4)}, ${o1Buf.readFloatLE(off+12).toFixed(4)}, ${o1Buf.readFloatLE(off+16).toFixed(4)}, ${o1Buf.readFloatLE(off+20).toFixed(4)}, ${o1Buf.readFloatLE(off+24).toFixed(4)}, ${o1Buf.readFloatLE(off+28).toFixed(4)}`);
+    console.log(`Line ${y}: ${o1.readFloatLE(off+0).toFixed(4)}, ${o1.readFloatLE(off+4).toFixed(4)}, ${o1.readFloatLE(off+8).toFixed(4)}, ${o1.readFloatLE(off+12).toFixed(4)}, ${o1.readFloatLE(off+16).toFixed(4)}, ${o1.readFloatLE(off+20).toFixed(4)}, ${o1.readFloatLE(off+24).toFixed(4)}, ${o1.readFloatLE(off+28).toFixed(4)}`);
   }
-  o1Buf.release();
 
   let [o2, m2, g2] = await Promise.all([
     context.createBuffer(numBytesV210, 'writeonly', 'coarse'),
@@ -485,13 +480,10 @@ async function noden() {
     context.createBuffer(2**16 * 4, 'readonly', 'none')
   ]);
 
-  let m2Buf = await m2.hostAccess('writeonly');
-  rgb2ycbcrMatrix(m2Buf, '709', 10);
-  let g2Buf = await g2.hostAccess('writeonly');
-  linearToGammaLUT(g2Buf, '709', 10);
-
-  m2Buf.release();
-  g2Buf.release();
+  await m2.hostAccess('writeonly');
+  rgb2ycbcrMatrix(m2, '709', 10);
+  await g2.hostAccess('writeonly');
+  linearToGammaLUT(g2, '709', 10);
 
   for (let x = 0; x < 10; x++) {
     let timings2 = await writeV210program.run({input: o1, output: o2, width: width, matrix: m2, linearToGammaLUT: g2});
@@ -499,15 +491,12 @@ async function noden() {
     // [o, i] = [i, o];
   }
 
-  let o2Buf = await o2.hostAccess('readonly');
-  dumpV210Buf(o2Buf, width, 4);
+  await o2.hostAccess('readonly');
+  dumpV210Buf(o2, width, 4);
 
-  i1Buf = await i1.hostAccess('readonly');
-  console.log('Compare returned', i1Buf.compare(o2Buf));
-  diff32(i1Buf, o2Buf, width, height);
-
-  i1Buf.release();
-  o2Buf.release();
+  await i1.hostAccess('readonly');
+  console.log('Compare returned', i1.compare(o2));
+  diff32(i1, o2, width, height);
 
   return [i1, o2];
 }

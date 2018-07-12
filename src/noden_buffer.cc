@@ -41,85 +41,53 @@ public:
 
 class gpuBuffer : public iGpuBuffer {
 public:
-  gpuBuffer(cl_mem gpuBuf, void *hostBuf, uint32_t numBytes, cl_command_queue commands, 
-            eSvmType svmType, bool doCopyToGpu, bool hostMapped, iGpuReturn *gpuReturn)
-    : mGpuBuf(gpuBuf), mHostBuf(hostBuf), mNumBytes(numBytes), mCommands(commands), 
-      mSvmType(svmType), mDoCopyToGpu(doCopyToGpu), mHostMapped(hostMapped), mGpuReturn(gpuReturn) {}
+  gpuBuffer(cl_mem pinnedBuf, void *hostBuf, uint32_t numBytes, cl_command_queue commands, 
+            eSvmType svmType, bool hostMapped, iGpuReturn *gpuReturn)
+    : mPinnedBuf(pinnedBuf), mHostBuf(hostBuf), mNumBytes(numBytes), mCommands(commands), 
+      mSvmType(svmType), mHostMapped(hostMapped), mGpuReturn(gpuReturn) {}
   ~gpuBuffer() {
     mGpuReturn->onGpuReturn();
   }
 
   cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex) const {
-    // printf("setKernelParam type %d, hostMapped %s, gpuCopy %s, numBytes %d\n", mSvmType, mHostMapped?"true":"false", mDoCopyToGpu?"true":"false", mNumBytes);
+    // printf("setKernelParam type %d, hostMapped %s, gpuCopy %s, numBytes %d\n", mSvmType, mHostMapped?"true":"false", mNumBytes);
     cl_int error = CL_SUCCESS;
-    if (mHostMapped) {
-      error = clEnqueueSVMUnmap(mCommands, mHostBuf, 0, 0, 0);
-      if (CL_SUCCESS != error) return error;
-    }
-
-    if (eSvmType::NONE != mSvmType) {
-      error = clSetKernelArgSVMPointer(kernel, paramIndex, mHostBuf);
-    } else {
-      if (mDoCopyToGpu) {
-        error = clEnqueueWriteBuffer(mCommands, mGpuBuf, CL_TRUE, 0, mNumBytes, mHostBuf, 0, nullptr, nullptr);
-        if (CL_SUCCESS != error) return error;
+    if (eSvmType::NONE == mSvmType) {
+      if (mHostMapped) {
+        error = clEnqueueUnmapMemObject(mCommands, mPinnedBuf, mHostBuf, 0, nullptr, nullptr);
+        PASS_CL_ERROR;
       }
-      error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), &mGpuBuf);
+      error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), &mPinnedBuf);
+    } else {
+      if (mHostMapped) {
+        error = clEnqueueSVMUnmap(mCommands, mHostBuf, 0, 0, 0);
+        PASS_CL_ERROR;
+      }
+      error = clSetKernelArgSVMPointer(kernel, paramIndex, mHostBuf);
     }
 
     return error;
   }
 
 private:
-  cl_mem mGpuBuf;
+  cl_mem mPinnedBuf;
   void *const mHostBuf;
   const uint32_t mNumBytes;
   cl_command_queue mCommands;
   const eSvmType mSvmType;
-  const bool mDoCopyToGpu;
   const bool mHostMapped;
   iGpuReturn *mGpuReturn;
 };
 
-class hostBuffer : public iHostBuffer {
+class nodenBuffer : public iNodenBuffer, public iGpuReturn {
 public:
-  hostBuffer(void *hostBuf, iHostReturn *hostReturn)
-    : mHostBuf(hostBuf), mHostReturn(hostReturn) {}
-  ~hostBuffer() {
-    mHostReturn->onHostReturn();
-  }
-
-  void *buf() const { return mHostBuf; }
-
-private:
-  void *const mHostBuf;
-  iHostReturn *mHostReturn;
-};
-
-class hostBufPersist {
-public:
-  hostBufPersist(std::shared_ptr<iHostBuffer> hostBuffer) : mHostBuffer(hostBuffer) {}
-  ~hostBufPersist() {}
-
-  void release() { mHostBuffer.reset(); }
-private:
-  std::shared_ptr<iHostBuffer> mHostBuffer;
-};
-
-void tidyHbp(napi_env env, void* data, void* hint) {
-  printf("Finalizing a host buffer accessor.\n");
-  hostBufPersist *hbp = (hostBufPersist*)data;
-  delete hbp;
-}
-
-class nodenBuffer : public iNodenBuffer, public iGpuReturn, public iHostReturn {
-public:
-  nodenBuffer(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes)
+  nodenBuffer(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes, napi_ref contextRef)
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
-      mGpuBuf(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostLocked(false), mBufLatest(eBufLatest::GPU),
+      mPinnedBuf(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
       mclMemFlags((eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
                   (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
-                  CL_MEM_READ_WRITE)
+                  CL_MEM_READ_WRITE),
+      mContextRef(contextRef)
       {}
   ~nodenBuffer() {
     switch (mSvmType) {
@@ -129,18 +97,26 @@ public:
       break;
     case eSvmType::NONE:
     default:
-      if (mGpuBuf) {
-        cl_int error = clReleaseMemObject(mGpuBuf);
+      if (mPinnedBuf) {
+        cl_int error = CL_SUCCESS;
+        // if (eBufLatest::HOST == mBufLatest) {
+        if (mHostMapped) {
+          error = clEnqueueUnmapMemObject(mCommands, mPinnedBuf, mHostBuf, 0, nullptr, nullptr);
+          if (CL_SUCCESS != error)
+            printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
+              __FILE__, __LINE__, error, clGetErrorString(error));
+        }
+        error = clReleaseMemObject(mPinnedBuf);
         if (CL_SUCCESS != error)
           printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
             __FILE__, __LINE__, error, clGetErrorString(error));
       }
-      free(mHostBuf);
       break;
     }
   }
 
   bool hostAllocate() {
+    cl_int error = CL_SUCCESS;
     cl_svm_mem_flags clMemFlags = mclMemFlags;
     switch (mSvmType) {
     case eSvmType::FINE:
@@ -151,71 +127,58 @@ public:
       break;
     case eSvmType::NONE:
     default:
-      mHostBuf = (void *)malloc(mNumBytes);
+      mPinnedBuf = clCreateBuffer(mContext, mclMemFlags | CL_MEM_ALLOC_HOST_PTR, mNumBytes, nullptr, &error);
+      if (CL_SUCCESS == error)
+        mHostBuf = clEnqueueMapBuffer(mCommands, mPinnedBuf, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
+      else
+        printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
+          __FILE__, __LINE__, error, clGetErrorString(error));
+      mHostMapped = true;
       break;
     }
 
     return nullptr != mHostBuf;
   }
 
-  std::shared_ptr<iGpuBuffer> getGPUBuffer(cl_int &error) {
-    // map/copy host buffer to GPU, creating GPU buffer if required
-    if (mHostLocked) {
-      printf("Host buffer access must be released before running GPU kernel - %d\n", mNumBytes);
-      error = CL_MAP_FAILURE;
-      return std::shared_ptr<iGpuBuffer>();
-    }
-
-    // printf("getGpuBuffer type %d, bufLatest %s, numBytes %d\n", mSvmType, (eBufLatest::HOST==mBufLatest)?"host":"gpu", mNumBytes);
-    error = CL_SUCCESS;
-    bool hostIsLatest = eBufLatest::HOST == mBufLatest;
-    bool isHostMapped = hostIsLatest && (eSvmType::COARSE == mSvmType);
-    bool doCopyToGpu = hostIsLatest && (eSvmType::NONE == mSvmType);
-
-    if (!mGpuBuf && (eSvmType::NONE == mSvmType))
-      mGpuBuf = clCreateBuffer(mContext, mclMemFlags | CL_MEM_ALLOC_HOST_PTR,
-        mNumBytes, nullptr, &error);
-
+  std::shared_ptr<iGpuBuffer> getGPUBuffer() {
+    // printf("getGpuBuffer type %d, host mapped %s, numBytes %d\n", mSvmType, mHostMapped?"true":"false", mNumBytes);
+    bool isHostMapped = mHostMapped;
+    mHostMapped = false;
     mGpuLocked = true;
-    mBufLatest = eBufLatest::GPU;
-    return std::make_shared<gpuBuffer>(mGpuBuf, mHostBuf, mNumBytes, mCommands, mSvmType, doCopyToGpu, isHostMapped, this);
+    return std::make_shared<gpuBuffer>(mPinnedBuf, mHostBuf, mNumBytes, mCommands, mSvmType, isHostMapped, this);
   }
 
-  std::shared_ptr<iHostBuffer> getHostBuffer(cl_int &error, eMemFlags haFlags) {
-    // map/copy GPU buffer to host
+  void setHostAccess(cl_int &error, eMemFlags haFlags) {
+    error = CL_SUCCESS;
     if (mGpuLocked) {
       printf("GPU buffer access must be released before host access - %d\n", mNumBytes);
       error = CL_MAP_FAILURE;
-      return std::shared_ptr<iHostBuffer>();
+      return;
     }
 
-    error = CL_SUCCESS;
-    if (eBufLatest::GPU == mBufLatest) {
-      if (eSvmType::COARSE == mSvmType) {
-        cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
-                                (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
-                                CL_MAP_READ;
-        error = clEnqueueSVMMap(mCommands, CL_TRUE, mapFlags, mHostBuf, mNumBytes, 0, 0, 0);
-      } else if (mGpuBuf && (eSvmType::NONE == mSvmType)) {
-        error = clEnqueueReadBuffer(mCommands, mGpuBuf, CL_TRUE, 0,
-          mNumBytes, mHostBuf, 0, nullptr, nullptr);
-
-        if (CL_SUCCESS == error) {
-          error = clReleaseMemObject(mGpuBuf);
-          mGpuBuf = nullptr;
+    if (!mHostMapped) {
+      cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
+                              (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
+                              CL_MAP_READ;
+      if (eSvmType::NONE == mSvmType) {
+        void *hostBuf = clEnqueueMapBuffer(mCommands, mPinnedBuf, CL_TRUE, mapFlags, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
+        if (mHostBuf != hostBuf) {
+          printf("Unexpected behaviour - mapped buffer address is not the same: %p != %p\n", mHostBuf, hostBuf);
+          error = CL_MAP_FAILURE;
+          return;
         }
+        mHostMapped = true;
+      } else if (eSvmType::COARSE == mSvmType) {
+        error = clEnqueueSVMMap(mCommands, CL_TRUE, mapFlags, mHostBuf, mNumBytes, 0, 0, 0);
+        mHostMapped = true;
       }
     }
-
-    mHostLocked = true;
-    mBufLatest = eBufLatest::HOST;
-    return std::make_shared<hostBuffer>(mHostBuf, this);
   }
 
   uint32_t numBytes() const { return mNumBytes; }
   eMemFlags memFlags() const { return mMemFlags; }
   eSvmType svmType() const { return mSvmType; }
-  std::string svmTypeName() const { 
+  std::string svmTypeName() const {
     switch (mSvmType) {
     case eSvmType::FINE: return "fine";
     case eSvmType::COARSE: return "coarse";
@@ -223,8 +186,8 @@ public:
     default: return "unknown";
     }
   }
-
   void* hostBuf() const { return mHostBuf; }
+  napi_ref contextRef() const { return mContextRef; }
 
 private:
   cl_context mContext;
@@ -232,15 +195,14 @@ private:
   const eMemFlags mMemFlags;
   const eSvmType mSvmType;
   const uint32_t mNumBytes;
-  cl_mem mGpuBuf;
+  cl_mem mPinnedBuf;
   void *mHostBuf;
   bool mGpuLocked;
-  bool mHostLocked;
-  eBufLatest mBufLatest;
+  bool mHostMapped;
   const cl_svm_mem_flags mclMemFlags;
+  napi_ref mContextRef;
 
   void onGpuReturn() { mGpuLocked = false; }
-  void onHostReturn() { mHostLocked = false; }
 };
 
 struct createBufCarrier : carrier {
@@ -249,45 +211,20 @@ struct createBufCarrier : carrier {
 
 struct hostAccessCarrier : carrier {
   nodenBuffer *nodenBuf = nullptr;
-  std::shared_ptr<iHostBuffer> hostBuf;
   eMemFlags haFlags = eMemFlags::READWRITE;
+  void* srcBuf = nullptr;
+  size_t srcBufSize = 0;
 };
-
-void tidyNodenBuf(napi_env env, void* data, void* hint) {
-  nodenBuffer *nodenBuf = (nodenBuffer*)data;
-  printf("Finalizing a noden buffer of type %s, size %d.\n", nodenBuf->svmTypeName().c_str(), nodenBuf->numBytes());
-  delete nodenBuf;
-}
-
-napi_value releaseHostAccess(napi_env env, napi_callback_info info) {
-  napi_status status;
-
-  napi_value args[1];
-  size_t argc = 1;
-  napi_value hostAccessValue;
-  status = napi_get_cb_info(env, info, &argc, args, &hostAccessValue, nullptr);
-  CHECK_STATUS;
-
-  hostBufPersist *hbp = nullptr;
-  napi_value hostBufPersistValue;
-  status = napi_get_named_property(env, hostAccessValue, "hostBufPersist", &hostBufPersistValue);
-  CHECK_STATUS;
-  status = napi_get_value_external(env, hostBufPersistValue, (void**)&hbp);
-  CHECK_STATUS;
-
-  hbp->release();
-
-  napi_value result;
-  status = napi_get_undefined(env, &result);
-  return result;
-}
 
 void hostAccessExecute(napi_env env, void* data) {
   hostAccessCarrier* c = (hostAccessCarrier*) data;
   cl_int error;
 
-  c->hostBuf = c->nodenBuf->getHostBuffer(error, c->haFlags);
+  c->nodenBuf->setHostAccess(error, c->haFlags);
   ASYNC_CL_ERROR;
+
+  if (c->srcBuf)
+    memcpy(c->nodenBuf->hostBuf(), c->srcBuf, c->srcBufSize);
 }
 
 void hostAccessComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -298,26 +235,11 @@ void hostAccessComplete(napi_env env, napi_status asyncStatus, void* data) {
   }
   REJECT_STATUS;
 
-  hostBufPersist *hbp = new hostBufPersist(c->hostBuf);  
-
   napi_value result;
+  c->status = napi_get_undefined(env, &result);
+  REJECT_STATUS;
+
   napi_status status;
-  status = napi_create_external_buffer(env, c->nodenBuf->numBytes(), c->hostBuf->buf(), nullptr, nullptr, &result);
-  REJECT_STATUS;
-
-  napi_value hostBufPersistValue;
-  c->status = napi_create_external(env, hbp, tidyHbp, nullptr, &hostBufPersistValue);
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "hostBufPersist", hostBufPersistValue);
-  REJECT_STATUS;
-
-  napi_value releaseHostAccessValue;
-  c->status = napi_create_function(env, "release", NAPI_AUTO_LENGTH,
-    releaseHostAccess, nullptr, &releaseHostAccessValue);
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "release", releaseHostAccessValue);
-  REJECT_STATUS;
-
   status = napi_resolve_deferred(env, c->_deferred, result);
   FLOATING_STATUS;
 
@@ -328,21 +250,21 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
   napi_status status;
   hostAccessCarrier* c = new hostAccessCarrier;
 
-  napi_value args[1];
-  size_t argc = 1;
+  napi_value args[2];
+  size_t argc = 2;
   napi_value bufferValue;
   status = napi_get_cb_info(env, info, &argc, args, &bufferValue, nullptr);
   CHECK_STATUS;
 
-  if (argc > 1) {
-    status = napi_throw_error(env, nullptr, "Wrong number of arguments to create buffer.");
+  if (argc > 2) {
+    status = napi_throw_error(env, nullptr, "Wrong number of arguments to hostAccess.");
     delete c;
     return nullptr;
   }
 
   napi_valuetype t;
   napi_value hostDirValue;
-  if (argc == 1) {
+  if (argc > 0) {
     status = napi_typeof(env, args[0], &t);
     CHECK_STATUS;
     if (t != napi_string) {
@@ -367,11 +289,44 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
                (0==strcmp("writeonly", haflag)) ? eMemFlags::WRITEONLY :
                eMemFlags::READONLY;
 
+  if ((argc == 2) && (c->haFlags == eMemFlags::READONLY)) {
+    napi_throw_type_error(env, nullptr, "Optional second argument source buffer provided when access is readonly.");
+    delete c;
+    return nullptr;
+  }
+
+  void* data = nullptr;
+  size_t dataSize = 0;
+  if (argc == 2) {
+    bool isBuffer;
+    status = napi_is_buffer(env, args[1], &isBuffer);
+    CHECK_STATUS;
+    if (!isBuffer) {
+      napi_throw_type_error(env, nullptr, "Optional second argument must be a buffer - the source data.");
+      delete c;
+      return nullptr;
+    }
+
+    status = napi_get_buffer_info(env, args[1], &data, &dataSize);
+    CHECK_STATUS;
+  }
+  
   napi_value nodenBufValue;
   status = napi_get_named_property(env, bufferValue, "nodenBuf", &nodenBufValue);
   CHECK_STATUS;
   status = napi_get_value_external(env, nodenBufValue, (void**)&c->nodenBuf);
   CHECK_STATUS;
+
+  if (data) {
+    if (dataSize > c->nodenBuf->numBytes()) {
+      napi_throw_type_error(env, nullptr, "Source buffer is larger than requested OpenCL allocation.");
+      delete c;
+      return nullptr;
+    } else {
+      c->srcBuf = data;
+      c->srcBufSize = dataSize;
+    }
+  }
 
   napi_value promise, resource_name;
   status = napi_create_promise(env, &c->_deferred, &promise);
@@ -386,6 +341,16 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
 
   return promise;
+}
+
+void tidyNodenBuf(napi_env env, void* data, void* hint) {
+  nodenBuffer *nodenBuf = (nodenBuffer*)data;
+  printf("Finalizing a noden buffer of type %s, size %d.\n", nodenBuf->svmTypeName().c_str(), nodenBuf->numBytes());
+  napi_ref contextRef = nodenBuf->contextRef();
+  delete nodenBuf;
+
+  napi_status status = napi_delete_reference(env, contextRef);
+  checkStatus(env, status, __FILE__, __LINE__ - 1);
 }
 
 void createBufferExecute(napi_env env, void* data) {
@@ -411,7 +376,7 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
   REJECT_STATUS;
 
   napi_value result;
-  c->status = napi_create_object(env, &result);
+  c->status = napi_create_external_buffer(env, c->nodenBuf->numBytes(), c->nodenBuf->hostBuf(), nullptr, nullptr, &result);
   REJECT_STATUS;
 
   napi_value nodenBufValue;
@@ -560,8 +525,12 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
   cl_command_queue commands = (cl_command_queue) commandsData;
 
+  napi_ref contextRef;
+  status = napi_create_reference(env, contextValue, 1, &contextRef);
+  CHECK_STATUS;
+
   // Create holder for host and gpu buffers
-  c->nodenBuf = new nodenBuffer(context, commands, memFlags, svmType, numBytes);
+  c->nodenBuf = new nodenBuffer(context, commands, memFlags, svmType, numBytes, contextRef);
 
   status = napi_create_reference(env, contextValue, 1, &c->passthru);
   CHECK_STATUS;

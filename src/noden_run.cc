@@ -38,8 +38,7 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (param->isBuf) {
-      param->gpuAccess = param->value.nodenBuf->getGPUBuffer(error); // allocates GPU buffer for 'NONE' type buffers
-      ASYNC_CL_ERROR;
+      param->gpuAccess = param->value.nodenBuf->getGPUBuffer();
       if (!inputSize)
         inputSize = (size_t)param->value.nodenBuf->numBytes();
     }
@@ -88,12 +87,13 @@ void runExecute(napi_env env, void* data) {
   c->kernelExec = microTime(kernelExecStart);
   HR_TIME_POINT dataFromKernelStart = NOW;
 
+  // Uncomment this block to get the timings for copy to host
   // for (auto& paramIter: c->kernelParams) {
   //   uint32_t p = paramIter.first;
   //   kernelParam* param = paramIter.second;
   //   if (param->isBuf && (eMemFlags::WRITEONLY == param->value.nodenBuf->memFlags())) {
   //     param->gpuAccess.reset();
-  //     param->value.nodenBuf->getHostBuffer(error, eMemFlags::READONLY);
+  //     param->value.nodenBuf->setHostAccess(error, eMemFlags::READONLY);
   //     ASYNC_CL_ERROR;
   //   }
   // }
