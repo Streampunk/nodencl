@@ -271,7 +271,13 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
     std::string paramTypeStr;
     if (0 == paramTokens[paramTokens.size()-3].compare("unsigned"))
       paramTypeStr = std::string("u");
-    paramTypeStr.append(paramTokens[paramTokens.size()-2]);
+
+    uint32_t tokenIndex = paramTokens.size() - 2;
+    if ((0 == paramTokens[tokenIndex].compare("const")) ||
+        (0 == paramTokens[tokenIndex].compare("restrict")) ||
+        (0 == paramTokens[tokenIndex].compare("volatile")))
+      --tokenIndex;
+    paramTypeStr.append(paramTokens[tokenIndex]);
 
     napi_value paramType;
     status = napi_create_string_utf8(env, paramTypeStr.c_str(), NAPI_AUTO_LENGTH, &paramType);

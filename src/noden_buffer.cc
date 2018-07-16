@@ -319,13 +319,11 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
 
   if (data) {
     if (dataSize > c->nodenBuf->numBytes()) {
-      napi_throw_type_error(env, nullptr, "Source buffer is larger than requested OpenCL allocation.");
-      delete c;
-      return nullptr;
-    } else {
-      c->srcBuf = data;
-      c->srcBufSize = dataSize;
+      printf("Source buffer is larger than requested OpenCL allocation - trimming.\n");
+      dataSize = c->nodenBuf->numBytes();
     }
+    c->srcBuf = data;
+    c->srcBufSize = dataSize;
   }
 
   napi_value promise, resource_name;

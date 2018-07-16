@@ -67,7 +67,7 @@ void runExecute(napi_env env, void* data) {
     else if (0 == param->type.compare("long"))
       error = clSetKernelArg(c->kernel, p, sizeof(int64_t), &param->value.int64);
     else if (0 == param->type.compare("float"))
-      error = clSetKernelArg(c->kernel, p, sizeof(float), &param->value.dbl);
+      error = clSetKernelArg(c->kernel, p, sizeof(float), &param->value.flt);
     else if (0 == param->type.compare("double"))
       error = clSetKernelArg(c->kernel, p, sizeof(double), &param->value.dbl);
     ASYNC_CL_ERROR;
@@ -225,14 +225,12 @@ napi_value run(napi_env env, napi_callback_info info) {
     status = napi_typeof(env, paramValue, &valueType);
     CHECK_STATUS;
 
-    kernelParam* kp = new kernelParam;
-    kp->name = std::string(paramName);
-    kp->type = std::string(paramType);
-    kp->isBuf = false;
+    kernelParam* kp = new kernelParam(paramName, paramType);
     switch (valueType) {
     case napi_undefined:
       printf("Parameter name \'%s\' not found during run\n", paramName);
       status = napi_throw_error(env, nullptr, "Parameter name not found during run");
+      delete kp;
       return nullptr;
       break;
     case napi_number:
@@ -242,15 +240,27 @@ napi_value run(napi_env env, napi_callback_info info) {
         status = napi_get_value_int32(env, paramValue, &kp->value.int32);
       else if (0 == strcmp("long", paramType))
         status = napi_get_value_int64(env, paramValue, &kp->value.int64);
-      else if (0 == strcmp("float", paramType) || 0 == strcmp("double", paramType))
+      else if (0 == strcmp("float", paramType)) {
+        double tmp = 0.0;
+        status = napi_get_value_double(env, paramValue, &tmp);
+        kp->value.flt = (float)tmp;
+      }
+      else if (0 == strcmp("double", paramType))
         status = napi_get_value_double(env, paramValue, &kp->value.dbl);
       else {
         printf("Unsupported numeric parameter type: \'%s\'\n", paramType);
         status = napi_throw_type_error(env, nullptr, "Unsupported numeric parameter type");
+        delete kp;
         return nullptr;
       }
       break;
     case napi_object:
+      if ('*' != paramType[strlen(paramType)-1]) {
+        printf("Parameter type \'%s\' not recognised as a buffer type\n", paramType);
+        status = napi_throw_error(env, nullptr, "Parameter type not recognised during run");
+        delete kp;
+        return nullptr;
+      }
       kp->isBuf = true;
       kp->type = std::string("ptr");
       napi_value nodenBufValue;
@@ -262,11 +272,13 @@ napi_value run(napi_env env, napi_callback_info info) {
     default:
       printf("Unsupported parameter value type: \'%d\'\n", valueType);
       status = napi_throw_type_error(env, nullptr, "Unsupported parameter value type");
+      delete kp;
       return nullptr;
     }
+    
+    free(paramName);
+    free(paramType);
     c->kernelParams.emplace(p, kp);
-    delete paramName;
-    delete paramType;
   }
 
   // Extract externals into variables

@@ -29,13 +29,17 @@
 #include "noden_buffer.h"
 
 struct kernelParam {
-  std::string name;
+  kernelParam(const std::string& paramName, const std::string& paramType) : 
+    name(paramName), type(paramType), isBuf(false), value(0) {}
+  const std::string name;
   std::string type;
   bool isBuf;
-  union {
+  union paramVal {
+    paramVal(int64_t i): int64(i) {}
     uint32_t uint32;
     int32_t int32;
     int64_t int64;
+    float flt;
     double dbl;
     iNodenBuffer* nodenBuf;
   } value;
