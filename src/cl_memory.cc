@@ -66,10 +66,7 @@ class clMemory : public iClMemory, public iGpuReturn {
 public:
   clMemory(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes)
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
-      mPinnedBuf(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
-      mclMemFlags((eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
-                  (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
-                  CL_MEM_READ_WRITE)
+      mPinnedBuf(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false)
       {}
   ~clMemory() {
     switch (mSvmType) {
@@ -98,20 +95,26 @@ public:
 
   bool hostAllocate() {
     cl_int error = CL_SUCCESS;
-    cl_svm_mem_flags clMemFlags = mclMemFlags;
+    cl_svm_mem_flags clMemFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
+                                  (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
+                                  CL_MEM_READ_WRITE;
+    if (eSvmType::FINE == mSvmType)
+      clMemFlags |= CL_MEM_SVM_FINE_GRAIN_BUFFER;
+
     switch (mSvmType) {
     case eSvmType::FINE:
-      clMemFlags |= CL_MEM_SVM_FINE_GRAIN_BUFFER;
-      // continues...
     case eSvmType::COARSE:
-      mHostBuf = clSVMAlloc(mContext, mclMemFlags, mNumBytes, 0);
+      mHostBuf = clSVMAlloc(mContext, clMemFlags, mNumBytes, 0);
       break;
     case eSvmType::NONE:
     default:
-      mPinnedBuf = clCreateBuffer(mContext, mclMemFlags | CL_MEM_ALLOC_HOST_PTR, mNumBytes, nullptr, &error);
-      if (CL_SUCCESS == error)
-        mHostBuf = clEnqueueMapBuffer(mCommands, mPinnedBuf, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
-      else
+      mPinnedBuf = clCreateBuffer(mContext, clMemFlags | CL_MEM_ALLOC_HOST_PTR, mNumBytes, nullptr, &error);
+      if (CL_SUCCESS == error) {
+        cl_map_flags clMapFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MAP_WRITE_INVALIDATE_REGION : 
+                                  (eMemFlags::WRITEONLY == mMemFlags) ? CL_MAP_READ :
+                                  CL_MAP_READ | CL_MAP_WRITE;
+        mHostBuf = clEnqueueMapBuffer(mCommands, mPinnedBuf, CL_TRUE, clMapFlags, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
+      } else
         printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
           __FILE__, __LINE__, error, clGetErrorString(error));
       mHostMapped = true;
@@ -179,7 +182,6 @@ private:
   void *mHostBuf;
   bool mGpuLocked;
   bool mHostMapped;
-  const cl_svm_mem_flags mclMemFlags;
 
   void onGpuReturn() { mGpuLocked = false; }
 };

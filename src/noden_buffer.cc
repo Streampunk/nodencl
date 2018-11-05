@@ -156,12 +156,12 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
 
 void finalizeClMemory(napi_env env, void* data, void* hint) {
   iClMemory *clMem = (iClMemory*)data;
-  printf("Finalizing a clMemory of type %s, size %d.\n", clMem->svmTypeName().c_str(), clMem->numBytes());
+  printf("Finalizing OpenCL memory of type %s, size %d.\n", clMem->svmTypeName().c_str(), clMem->numBytes());
   delete clMem;
 }
 
 void finalizeContextRef(napi_env env, void* data, void* hint) {
-  printf("Finalizing a clMemory context reference.\n");
+  printf("Finalizing OpenCL context reference.\n");
   napi_ref contextRef = (napi_ref)data;
   napi_status status = napi_delete_reference(env, contextRef);
   checkStatus(env, status, __FILE__, __LINE__ - 1);
