@@ -9,7 +9,8 @@
         "src/noden_context.cc",
         "src/noden_program.cc",
         "src/noden_buffer.cc",
-        "src/noden_run.cc"
+        "src/noden_run.cc",
+        "src/cl_memory.cc"
       ],
       "include_dirs": [ "include" ],
       "link_settings": {

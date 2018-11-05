@@ -23,10 +23,14 @@
 #endif
 #include <chrono>
 #include <stdio.h>
+#include <memory>
 #include <map>
 #include "node_api.h"
 #include "noden_util.h"
 #include "noden_buffer.h"
+
+class iClMemory;
+class iGpuMemory;
 
 struct kernelParam {
   kernelParam(const std::string& paramName, const std::string& paramType) : 
@@ -41,9 +45,9 @@ struct kernelParam {
     int64_t int64;
     float flt;
     double dbl;
-    iNodenBuffer* nodenBuf;
+    iClMemory* clMem;
   } value;
-  std::shared_ptr<iGpuBuffer> gpuAccess;
+  std::shared_ptr<iGpuMemory> gpuAccess;
 };
 
 struct runCarrier : carrier {

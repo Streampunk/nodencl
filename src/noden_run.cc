@@ -25,6 +25,7 @@
 #include "noden_info.h"
 #include "noden_buffer.h"
 #include "noden_run.h"
+#include "cl_memory.h"
 
 void runExecute(napi_env env, void* data) {
   runCarrier* c = (runCarrier*) data;
@@ -38,9 +39,9 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (param->isBuf) {
-      param->gpuAccess = param->value.nodenBuf->getGPUBuffer();
+      param->gpuAccess = param->value.clMem->getGPUMemory();
       if (!inputSize)
-        inputSize = (size_t)param->value.nodenBuf->numBytes();
+        inputSize = (size_t)param->value.clMem->numBytes();
     }
   }
   
@@ -91,9 +92,9 @@ void runExecute(napi_env env, void* data) {
   // for (auto& paramIter: c->kernelParams) {
   //   uint32_t p = paramIter.first;
   //   kernelParam* param = paramIter.second;
-  //   if (param->isBuf && (eMemFlags::WRITEONLY == param->value.nodenBuf->memFlags())) {
+  //   if (param->isBuf && (eMemFlags::WRITEONLY == param->value.clMem->memFlags())) {
   //     param->gpuAccess.reset();
-  //     param->value.nodenBuf->setHostAccess(error, eMemFlags::READONLY);
+  //     param->value.clMem->setHostAccess(error, eMemFlags::READONLY);
   //     ASYNC_CL_ERROR;
   //   }
   // }
@@ -263,10 +264,10 @@ napi_value run(napi_env env, napi_callback_info info) {
       }
       kp->isBuf = true;
       kp->type = std::string("ptr");
-      napi_value nodenBufValue;
-      status = napi_get_named_property(env, paramValue, "nodenBuf", &nodenBufValue);
+      napi_value clMemValue;
+      status = napi_get_named_property(env, paramValue, "clMemory", &clMemValue);
       CHECK_STATUS;
-      status = napi_get_value_external(env, nodenBufValue, (void**)&kp->value.nodenBuf);
+      status = napi_get_value_external(env, clMemValue, (void**)&kp->value.clMem);
       CHECK_STATUS;
       break;
     default:

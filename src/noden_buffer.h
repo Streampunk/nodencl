@@ -16,39 +16,8 @@
 #ifndef NODEN_BUFFER_H
 #define NODEN_BUFFER_H
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
-#include <chrono>
-#include <stdio.h>
-#include <memory>
 #include "node_api.h"
-#include "noden_util.h"
 
 napi_value createBuffer(napi_env env, napi_callback_info info);
-
-enum class eMemFlags : uint8_t { READWRITE = 0, WRITEONLY = 1, READONLY = 2 };
-enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
-
-class iGpuBuffer {
-public:
-  virtual ~iGpuBuffer() {}
-  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex) const = 0;
-};
-
-class iNodenBuffer {
-public:
-  virtual ~iNodenBuffer() {}
-
-  virtual std::shared_ptr<iGpuBuffer> getGPUBuffer() = 0;
-  virtual void setHostAccess(cl_int &error, eMemFlags haFlags) = 0; // map GPU buffer to host
-
-  virtual uint32_t numBytes() const = 0;
-  virtual eMemFlags memFlags() const = 0;
-  virtual eSvmType svmType() const = 0;
-  virtual std::string svmTypeName() const = 0;
-};
 
 #endif
