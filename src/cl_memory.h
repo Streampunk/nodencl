@@ -25,13 +25,15 @@
 #include <memory>
 #include <string>
 
+class iRunParams;
+
 enum class eMemFlags : uint8_t { READWRITE = 0, WRITEONLY = 1, READONLY = 2 };
 enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
 
 class iGpuMemory {
 public:
   virtual ~iGpuMemory() {}
-  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex) const = 0;
+  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, iRunParams *runParams) const = 0;
 };
 
 class iClMemory {
@@ -40,7 +42,7 @@ public:
 
   static iClMemory *create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes);
 
-  virtual bool hostAllocate() = 0;
+  virtual bool allocate() = 0;
   virtual std::shared_ptr<iGpuMemory> getGPUMemory() = 0;
   virtual void setHostAccess(cl_int &error, eMemFlags haFlags) = 0; // map GPU buffer to host
 

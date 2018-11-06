@@ -13,21 +13,25 @@
   limitations under the License.
 */
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
-#include <chrono>
-#include <vector>
-#include <regex>
-#include <stdio.h>
-#include "node_api.h"
-#include "noden_util.h"
-#include "noden_info.h"
 #include "noden_program.h"
-#include "noden_buffer.h"
 #include "noden_run.h"
+#include <regex>
+#include <sstream>
+
+class runParams : public iRunParams {
+public:
+  runParams(const std::vector<size_t>& gwi, const std::vector<size_t>& wig) :
+    globalWorkItems(gwi), workItemsPerGroup(wig) {}
+  ~runParams() {}
+
+  size_t getNumDims() const { return globalWorkItems.size(); }
+  const size_t *getGlobalWorkItems() const { return globalWorkItems.data(); }
+  const size_t *getWorkItemsPerGroup() const { return workItemsPerGroup.data(); }
+
+private:
+  const std::vector<size_t> globalWorkItems;
+  const std::vector<size_t> workItemsPerGroup;
+};
 
 void tidyProgram(napi_env env, void* data, void* hint) {
   printf("Program finalizer called.\n");
@@ -41,6 +45,12 @@ void tidyKernel(napi_env env, void* data, void* hint) {
   cl_int error = CL_SUCCESS;
   error = clReleaseKernel((cl_kernel) data);
   if (error != CL_SUCCESS) printf("Failed to release CL kernel.\n");
+}
+
+void tidyParams(napi_env env, void* data, void* hint) {
+  printf("Params finalizer called.\n");
+  runParams *rp = (runParams*)data;
+  delete rp;
 }
 
 void tidyProgramContextRef(napi_env env, void* data, void* hint) {
@@ -65,7 +75,24 @@ void buildExecute(napi_env env, void* data) {
   buildCarrier* c = (buildCarrier*) data;
   cl_int error;
 
-  printf("globalWorkItems: %zd, workItemsPerGroup: %zd\n", c->globalWorkItems, c->workItemsPerGroup);
+  std::stringstream gwiss;
+  if (c->globalWorkItems.size() > 1) gwiss << "[ ";
+  for (size_t i = 0; i < c->globalWorkItems.size(); ++i) {
+    if (i > 0) gwiss << ", ";
+    gwiss << c->globalWorkItems[i];
+  }
+  if (c->globalWorkItems.size() > 1) gwiss << " ]";
+
+  std::stringstream wigss;
+  if (0 == c->workItemsPerGroup.size()) wigss << "[]";
+  else if (c->workItemsPerGroup.size() > 1) wigss << "[ ";
+  for (size_t i = 0; i < c->workItemsPerGroup.size(); ++i) {
+    if (i > 0) wigss << ", ";
+    wigss << c->workItemsPerGroup[i];
+  }
+  if (c->workItemsPerGroup.size() > 1) wigss << " ]";
+
+  printf("globalWorkItems: %s, workItemsPerGroup: %s\n", gwiss.str().c_str(), wigss.str().c_str());
   HR_TIME_POINT start = NOW;
 
   const char* kernelSource[1];
@@ -97,13 +124,15 @@ void buildExecute(napi_env env, void* data) {
     sizeof(size_t), &deviceWorkGroupSize, nullptr);
   ASYNC_CL_ERROR;
 
-  if (0 == c->workItemsPerGroup)
-    c->workItemsPerGroup = deviceWorkGroupSize;
-  else if (c->workItemsPerGroup > deviceWorkGroupSize) {
+  size_t requestedWorkItemsSize = 1;
+  for (size_t i = 0; i < c->workItemsPerGroup.size(); ++i)
+    requestedWorkItemsSize *= c->workItemsPerGroup[i];
+
+  if (requestedWorkItemsSize > deviceWorkGroupSize) {
     c->status = NODEN_OUT_OF_RANGE;
     char* errorMsg = (char *) malloc(200);
-    sprintf(errorMsg, "Property workItemsPerGroup (%zd) is larger than the available workgroup size (%zd) for platform %i.",
-            c->workItemsPerGroup, deviceWorkGroupSize, c->platformIndex);
+    sprintf(errorMsg, "Parameter workItemsPerGroup %s is larger than the available workgroup size (%zd) for platform %i.",
+            wigss.str().c_str(), deviceWorkGroupSize, c->platformIndex);
     c->errorMsg = std::string(errorMsg);
     delete[] errorMsg;
     return;
@@ -149,16 +178,11 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
   REJECT_STATUS;
 
-  napi_value globalWorkItemsValue;
-  c->status = napi_create_int64(env, (int64_t) c->globalWorkItems, &globalWorkItemsValue);
+  runParams *rp = new runParams(c->globalWorkItems, c->workItemsPerGroup);
+  napi_value runParamsValue;
+  c->status = napi_create_external(env, rp, tidyParams, nullptr, &runParamsValue);
   REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "globalWorkItems", globalWorkItemsValue);
-  REJECT_STATUS;
-
-  napi_value workItemsPerGroupValue;
-  c->status = napi_create_int64(env, (int64_t) c->workItemsPerGroup, &workItemsPerGroupValue);
-  REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "workItemsPerGroup", workItemsPerGroupValue);
+  c->status = napi_set_named_property(env, result, "runParams", runParamsValue);
   REJECT_STATUS;
 
   napi_value runValue;
@@ -292,32 +316,73 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   napi_value globalWorkItemsValue;
   status = napi_has_named_property(env, config, "globalWorkItems", &hasProp);
   CHECK_STATUS;
-  if (hasProp) {
-    status = napi_get_named_property(env, config, "globalWorkItems", &globalWorkItemsValue);
-    CHECK_STATUS;
-  } else {
-    status = napi_create_int64(env, 0, &globalWorkItemsValue);
-    CHECK_STATUS;
+  if (!hasProp) {
+    status = napi_throw_type_error(env, nullptr, "globalWorkItems parameter must be provided.");
+    return nullptr;
   }
-  status = napi_get_value_int64(env, globalWorkItemsValue, (int64_t*)&carrier->globalWorkItems);
-  CHECK_STATUS;
-  status = napi_set_named_property(env, program, "globalWorkItems", globalWorkItemsValue);
+  status = napi_get_named_property(env, config, "globalWorkItems", &globalWorkItemsValue);
   CHECK_STATUS;
 
+  bool hasWIG = false;
   napi_value workItemsPerGroupValue;
-  status = napi_has_named_property(env, config, "workItemsPerGroup", &hasProp);
+  status = napi_has_named_property(env, config, "workItemsPerGroup", &hasWIG);
   CHECK_STATUS;
-  if (hasProp) {
+  if (hasWIG) {
     status = napi_get_named_property(env, config, "workItemsPerGroup", &workItemsPerGroupValue);
     CHECK_STATUS;
-  } else {
-    status = napi_create_int64(env, 0, &workItemsPerGroupValue);
-    CHECK_STATUS;
   }
-  status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&carrier->workItemsPerGroup);
+
+  status = napi_typeof(env, globalWorkItemsValue, &t);
   CHECK_STATUS;
-  status = napi_set_named_property(env, program, "workItemsPerGroup", workItemsPerGroupValue);
-  CHECK_STATUS;
+  if (napi_number == t) {
+    // OpenCL 1 dimension buffer mode
+    uint32_t gwi, wig;
+    status = napi_get_value_uint32(env, globalWorkItemsValue, &gwi);
+    CHECK_STATUS;
+    carrier->globalWorkItems.push_back(gwi);
+    if (hasWIG) {
+      status = napi_get_value_uint32(env, workItemsPerGroupValue, &wig);
+      CHECK_STATUS;
+      carrier->workItemsPerGroup.push_back(wig);
+    }
+  } else {
+    // OpenCL 2+ dimension image mode
+    napi_typedarray_type taType;
+    size_t gwiNumDims;
+    uint32_t* gwiData;
+    napi_value arrbuf;
+    size_t byteOffset;
+    status = napi_get_typedarray_info(env, globalWorkItemsValue, &taType, &gwiNumDims, (void**)&gwiData, &arrbuf, &byteOffset);
+    CHECK_STATUS;
+    if (napi_uint32_array != taType) {
+      status = napi_throw_type_error(env, nullptr, "globalWorkItems parameter must be a Uint32Array.");
+      return nullptr;
+    }
+    for (size_t i = 0; i < gwiNumDims; ++i)
+      carrier->globalWorkItems.push_back(gwiData[i]);
+
+    if (hasWIG) {
+      size_t wigNumDims;
+      uint32_t* wigData;
+      status = napi_get_typedarray_info(env, workItemsPerGroupValue, &taType, &wigNumDims, (void**)&wigData, &arrbuf, &byteOffset);
+      CHECK_STATUS;
+      if (napi_uint32_array != taType) {
+        status = napi_throw_type_error(env, nullptr, "workItemsPerGroup parameter must be a Uint32Array.");
+        return nullptr;
+      }
+      if (gwiNumDims != wigNumDims) {
+        status = napi_throw_type_error(env, nullptr, "globalWorkItems and workItemsPerGroup must have the same array dimensions.");
+        return nullptr;
+      }
+      for (size_t i = 0; i < wigNumDims; ++i) {
+        if (0 == wigData[i]) { // if any paramater is zero deliver a null vector
+          carrier->workItemsPerGroup.clear();
+          break;
+        }
+        carrier->workItemsPerGroup.push_back(wigData[i]);
+      }
+    }
+  }
 
   napi_value jsContext;
   status = napi_get_named_property(env, contextValue, "context", &jsContext);

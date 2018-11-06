@@ -173,7 +173,7 @@ void createBufferExecute(napi_env env, void* data) {
 
   HR_TIME_POINT start = NOW;
 
-  if (!c->clMem->hostAllocate()) {
+  if (!c->clMem->allocate()) {
     c->status = NODEN_ALLOCATION_FAILURE;
     c->errorMsg = "Failed to allocate memory for buffer.";
   }

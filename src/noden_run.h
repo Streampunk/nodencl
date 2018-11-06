@@ -21,23 +21,24 @@
 #else
     #include "CL/cl.h"
 #endif
-#include <chrono>
-#include <stdio.h>
 #include <memory>
+#include <string>
 #include <map>
 #include "node_api.h"
 #include "noden_util.h"
-#include "noden_buffer.h"
 
 class iClMemory;
 class iGpuMemory;
+class iRunParams;
+
+enum class eParamFlags : uint8_t { VALUE = 0, BUFFER = 1, IMAGE = 2 };
 
 struct kernelParam {
   kernelParam(const std::string& paramName, const std::string& paramType) : 
-    name(paramName), type(paramType), isBuf(false), value(0) {}
+    name(paramName), paramType(paramType), valueType(eParamFlags::VALUE), value(0) {}
   const std::string name;
-  std::string type;
-  bool isBuf;
+  std::string paramType;
+  eParamFlags valueType;
   union paramVal {
     paramVal(int64_t i): int64(i) {}
     uint32_t uint32;
@@ -52,8 +53,7 @@ struct kernelParam {
 
 struct runCarrier : carrier {
   std::map<uint32_t, kernelParam*> kernelParams;
-  size_t globalWorkItems;
-  size_t workItemsPerGroup;
+  iRunParams *runParams;
   long long dataToKernel;
   long long kernelExec;
   long long dataFromKernel;

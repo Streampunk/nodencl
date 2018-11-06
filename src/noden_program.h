@@ -21,9 +21,19 @@
 #else
     #include "CL/cl.h"
 #endif
-#include <chrono>
-#include <stdio.h>
+#include <vector>
+#include <string>
 #include "node_api.h"
+#include "noden_util.h"
+
+class iRunParams {
+public:
+  virtual ~iRunParams() {}
+
+  virtual size_t getNumDims() const = 0;
+  virtual const size_t *getGlobalWorkItems() const = 0;
+  virtual const size_t *getWorkItemsPerGroup() const = 0;
+};
 
 struct buildCarrier : carrier {
   std::string kernelSource;
@@ -38,8 +48,8 @@ struct buildCarrier : carrier {
   std::string name;
   size_t nameLength;
   cl_ulong svmCaps;
-  size_t globalWorkItems;
-  size_t workItemsPerGroup;
+  std::vector<size_t> globalWorkItems;
+  std::vector<size_t> workItemsPerGroup;
 };
 
 napi_value createProgram(napi_env env, napi_callback_info info);

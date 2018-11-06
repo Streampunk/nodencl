@@ -13,24 +13,13 @@
   limitations under the License.
 */
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
-#include <chrono>
-#include <stdio.h>
-#include "node_api.h"
-#include "noden_util.h"
-#include "noden_info.h"
-#include "noden_buffer.h"
 #include "noden_run.h"
+#include "noden_program.h"
 #include "cl_memory.h"
 
 void runExecute(napi_env env, void* data) {
   runCarrier* c = (runCarrier*) data;
   cl_int error;
-  size_t inputSize = 0;
 
   HR_TIME_POINT bufAlloc = NOW;
   // Not recording buffer create time - should probably be done once, before here
@@ -38,11 +27,8 @@ void runExecute(napi_env env, void* data) {
   for (auto& paramIter: c->kernelParams) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
-    if (param->isBuf) {
+    if (eParamFlags::VALUE != param->valueType)
       param->gpuAccess = param->value.clMem->getGPUMemory();
-      if (!inputSize)
-        inputSize = (size_t)param->value.clMem->numBytes();
-    }
   }
   
   // printf("Took %lluus to create GPU buffers.\n", microTime(bufAlloc));
@@ -52,8 +38,8 @@ void runExecute(napi_env env, void* data) {
   for (auto& paramIter: c->kernelParams) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
-    if (param->isBuf) {
-      error = param->gpuAccess->setKernelParam(c->kernel, p);
+    if (eParamFlags::VALUE != param->valueType) {
+      error = param->gpuAccess->setKernelParam(c->kernel, p, c->runParams);
       ASYNC_CL_ERROR;
     }
   }
@@ -61,15 +47,15 @@ void runExecute(napi_env env, void* data) {
   for (auto& paramIter: c->kernelParams) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
-    if (0 == param->type.compare("uint"))
+    if (0 == param->paramType.compare("uint"))
       error = clSetKernelArg(c->kernel, p, sizeof(uint32_t), &param->value.uint32);
-    else if (0 == param->type.compare("int"))
+    else if (0 == param->paramType.compare("int"))
       error = clSetKernelArg(c->kernel, p, sizeof(int32_t), &param->value.int32);
-    else if (0 == param->type.compare("long"))
+    else if (0 == param->paramType.compare("long"))
       error = clSetKernelArg(c->kernel, p, sizeof(int64_t), &param->value.int64);
-    else if (0 == param->type.compare("float"))
+    else if (0 == param->paramType.compare("float"))
       error = clSetKernelArg(c->kernel, p, sizeof(float), &param->value.flt);
-    else if (0 == param->type.compare("double"))
+    else if (0 == param->paramType.compare("double"))
       error = clSetKernelArg(c->kernel, p, sizeof(double), &param->value.dbl);
     ASYNC_CL_ERROR;
   }
@@ -77,9 +63,10 @@ void runExecute(napi_env env, void* data) {
   c->dataToKernel = microTime(dataToKernelStart);
   HR_TIME_POINT kernelExecStart = NOW;
 
-  size_t global = (0 == c->globalWorkItems) ? inputSize : c->globalWorkItems;
-  size_t local = c->workItemsPerGroup;
-  error = clEnqueueNDRangeKernel(c->commands, c->kernel, 1, nullptr, &global, &local, 0, nullptr, nullptr);
+  size_t numDims = c->runParams->getNumDims();
+  const size_t *global = c->runParams->getGlobalWorkItems();
+  const size_t *local = c->runParams->getWorkItemsPerGroup();
+  error = clEnqueueNDRangeKernel(c->commands, c->kernel, numDims, nullptr, global, local, 0, nullptr, nullptr);
   ASYNC_CL_ERROR;
 
   error = clFinish(c->commands);
@@ -92,7 +79,7 @@ void runExecute(napi_env env, void* data) {
   // for (auto& paramIter: c->kernelParams) {
   //   uint32_t p = paramIter.first;
   //   kernelParam* param = paramIter.second;
-  //   if (param->isBuf && (eMemFlags::WRITEONLY == param->value.clMem->memFlags())) {
+  //   if ((eParamFlags::BUFFER == param->valueType) && (eMemFlags::WRITEONLY == param->value.nodenBuf->memFlags())) {
   //     param->gpuAccess.reset();
   //     param->value.clMem->setHostAccess(error, eMemFlags::READONLY);
   //     ASYNC_CL_ERROR;
@@ -256,14 +243,18 @@ napi_value run(napi_env env, napi_callback_info info) {
       }
       break;
     case napi_object:
-      if ('*' != paramType[strlen(paramType)-1]) {
+      if (0 == strcmp("image2d_t", paramType)) {
+        kp->valueType = eParamFlags::IMAGE;
+        kp->paramType = std::string("image");
+      } else if ('*' == paramType[strlen(paramType)-1]) {
+        kp->valueType = eParamFlags::BUFFER;
+        kp->paramType = std::string("ptr");
+      } else {
         printf("Parameter type \'%s\' not recognised as a buffer type\n", paramType);
         status = napi_throw_error(env, nullptr, "Parameter type not recognised during run");
         delete kp;
         return nullptr;
       }
-      kp->isBuf = true;
-      kp->type = std::string("ptr");
       napi_value clMemValue;
       status = napi_get_named_property(env, paramValue, "clMemory", &clMemValue);
       CHECK_STATUS;
@@ -307,16 +298,10 @@ napi_value run(napi_env env, napi_callback_info info) {
   c->kernel = (cl_kernel) kernelData;
   CHECK_STATUS;
 
-  napi_value globalWorkItemsValue;
-  status = napi_get_named_property(env, programValue, "globalWorkItems", &globalWorkItemsValue);
+  napi_value runParamsValue;
+  status = napi_get_named_property(env, programValue, "runParams", &runParamsValue);
   CHECK_STATUS;
-  status = napi_get_value_int64(env, globalWorkItemsValue, (int64_t*)&c->globalWorkItems);
-  CHECK_STATUS;
-
-  napi_value workItemsPerGroupValue;
-  status = napi_get_named_property(env, programValue, "workItemsPerGroup", &workItemsPerGroupValue);
-  CHECK_STATUS;
-  status = napi_get_value_int64(env, workItemsPerGroupValue, (int64_t*)&c->workItemsPerGroup);
+  status = napi_get_value_external(env, runParamsValue, (void**)&c->runParams);
   CHECK_STATUS;
 
   status = napi_create_reference(env, programValue, 1, &c->passthru);
