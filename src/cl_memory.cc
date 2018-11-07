@@ -233,9 +233,9 @@ private:
   }
 
   cl_int getKernelMem(iRunParams *runParams, eMemFlags accessFlags, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) {
-    kernelMem = mPinnedMem;
+    kernelMem = mImageMem ? mImageMem : mPinnedMem;
     hostBuf = mHostBuf;
-    isSVM = eSvmType::NONE != mSvmType;
+    isSVM = mImageMem ? false : eSvmType::NONE != mSvmType;
     const size_t origin[3] = { 0, 0, 0 };
     cl_int error = CL_SUCCESS;
 
@@ -288,11 +288,13 @@ private:
         error = copyImageToBuffer();
         PASS_CL_ERROR;
       }
-
       error = clReleaseMemObject(mImageMem);
       PASS_CL_ERROR;
       mImageMem = nullptr;
       mImageAccessAttribute = eMemFlags::READONLY;
+
+      kernelMem = mPinnedMem;
+      isSVM = eSvmType::NONE != mSvmType;
     }
 
     return error;
