@@ -22,7 +22,7 @@ class iGpuAccess {
 public:
   virtual ~iGpuAccess() {}
   virtual cl_int unmapMem() = 0;
-  virtual cl_int getKernelMem(iRunParams *runParams, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) = 0;
+  virtual cl_int getKernelMem(iRunParams *runParams, eMemFlags accessFlags, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) = 0;
   virtual void onGpuReturn() = 0;
 };
 
@@ -34,7 +34,7 @@ public:
     mGpuAccess->onGpuReturn();
   }
 
-  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, iRunParams *runParams) const {
+  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, eMemFlags accessFlags, iRunParams *runParams) const {
     cl_int error = CL_SUCCESS;
     error = mGpuAccess->unmapMem();
     PASS_CL_ERROR;
@@ -42,7 +42,7 @@ public:
     cl_mem kernelMem = nullptr;
     void *hostBuf = nullptr;
     bool isSVM = false;
-    error = mGpuAccess->getKernelMem(runParams, kernelMem, hostBuf, isSVM);
+    error = mGpuAccess->getKernelMem(runParams, accessFlags, kernelMem, hostBuf, isSVM);
     PASS_CL_ERROR;
 
     // printf("setKernelParam %d: type %s, kernelMem %p, hostBuf %p\n", paramIndex, isSVM?"SVM":"NONE", kernelMem, hostBuf);
@@ -61,7 +61,8 @@ class clMemory : public iClMemory, public iGpuAccess {
 public:
   clMemory(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes)
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
-      mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false)
+      mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
+      mImageAccessAttribute(eMemFlags::READONLY)
       {}
   ~clMemory() {
     cl_int error = CL_SUCCESS;
@@ -138,12 +139,17 @@ public:
                               (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
                               CL_MAP_READ;
       if (mImageMem) {
-        error = copyImageToBuffer();
+        if (CL_MAP_WRITE != mapFlags) {
+          error = copyImageToBuffer();
+          if (CL_SUCCESS != error) return;
+        }
 
         // Optimisation - if readonly access need not release mImageMem - but need to know if buffer is still up-to-date before next buffer kernel op?
         // if (CL_MAP_READ != mapFlags) {
           error = clReleaseMemObject(mImageMem);
           mImageMem = nullptr;
+          mImageAccessAttribute = eMemFlags::READONLY;
+          if (CL_SUCCESS != error) return;
         // }
       }
 
@@ -186,6 +192,7 @@ private:
   void *mHostBuf;
   bool mGpuLocked;
   bool mHostMapped;
+  eMemFlags mImageAccessAttribute;
 
   cl_int unmapMem() {
     cl_int error = CL_SUCCESS;
@@ -213,7 +220,7 @@ private:
       PASS_CL_ERROR;
       if (depth) region[2] = depth;
 
-      printf("Copying image memory to buffer size %zdx%zd %s\n", region[0], region[1], eSvmType::NONE == mSvmType ? "":"SVM");
+      printf("Copying image memory to buffer size %zdx%zd%s\n", region[0], region[1], eSvmType::NONE == mSvmType ? "":" using SVM !!");
       if (eSvmType::NONE == mSvmType) {
         error = clEnqueueCopyImageToBuffer(mCommands, mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
         PASS_CL_ERROR;
@@ -225,7 +232,7 @@ private:
     return error;
   }
 
-  cl_int getKernelMem(iRunParams *runParams, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) {
+  cl_int getKernelMem(iRunParams *runParams, eMemFlags accessFlags, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) {
     kernelMem = mPinnedMem;
     hostBuf = mHostBuf;
     isSVM = eSvmType::NONE != mSvmType;
@@ -238,7 +245,6 @@ private:
       std::vector<size_t> imageDims;
       for (size_t i = 0; i < runParams->getNumDims(); ++i)
         imageDims.push_back(runParams->getGlobalWorkItems()[i]);
-      printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
 
       cl_image_format clImageFormat;
       memset(&clImageFormat, 0, sizeof(clImageFormat));
@@ -261,23 +267,32 @@ private:
       kernelMem = mImageMem;
       isSVM = false;
 
-      size_t region[3] = { 1, 1, 1 };
-      for (size_t i = 0; i < imageDims.size(); ++i)
-        region[i] = imageDims[i];
-      if (eSvmType::NONE == mSvmType) {
-        error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
-        PASS_CL_ERROR;
-      } else {
-        error = clEnqueueWriteImage(mCommands, mImageMem, CL_TRUE, origin, region, 0, 0, mHostBuf, 0, nullptr, nullptr);
-        PASS_CL_ERROR;
+      mImageAccessAttribute = accessFlags;
+      if (eMemFlags::WRITEONLY != mImageAccessAttribute) {
+        // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
+        printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
+        size_t region[3] = { 1, 1, 1 };
+        for (size_t i = 0; i < imageDims.size(); ++i)
+          region[i] = imageDims[i];
+        if (eSvmType::NONE == mSvmType) {
+          error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+          PASS_CL_ERROR;
+        } else {
+          error = clEnqueueWriteImage(mCommands, mImageMem, CL_TRUE, origin, region, 0, 0, mHostBuf, 0, nullptr, nullptr);
+          PASS_CL_ERROR;
+        }
       }
     } else if (!isImageParam && mImageMem) {
-      error = copyImageToBuffer();
-      PASS_CL_ERROR;
+      if (eMemFlags::READONLY != mImageAccessAttribute) {
+        // don't copy back to buffer if this had a read-only argument attribute - the buffer is already up-to-date
+        error = copyImageToBuffer();
+        PASS_CL_ERROR;
+      }
 
       error = clReleaseMemObject(mImageMem);
       PASS_CL_ERROR;
       mImageMem = nullptr;
+      mImageAccessAttribute = eMemFlags::READONLY;
     }
 
     return error;

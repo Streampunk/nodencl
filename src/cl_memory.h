@@ -33,7 +33,7 @@ enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
 class iGpuMemory {
 public:
   virtual ~iGpuMemory() {}
-  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, iRunParams *runParams) const = 0;
+  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, eMemFlags accessFlags, iRunParams *runParams) const = 0;
 };
 
 class iClMemory {

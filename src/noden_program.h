@@ -46,7 +46,6 @@ struct buildCarrier : carrier {
   cl_program program;
   cl_kernel kernel;
   std::string name;
-  size_t nameLength;
   cl_ulong svmCaps;
   std::vector<size_t> globalWorkItems;
   std::vector<size_t> workItemsPerGroup;

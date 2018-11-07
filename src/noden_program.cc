@@ -101,7 +101,8 @@ void buildExecute(napi_env env, void* data) {
     nullptr, &error);
   ASYNC_CL_ERROR;
 
-  error = clBuildProgram(c->program, 0, nullptr, nullptr, nullptr, nullptr);
+  const char* buildOptions = "-cl-kernel-arg-info";
+  error = clBuildProgram(c->program, 0, nullptr, buildOptions, nullptr, nullptr);
   if (error != CL_SUCCESS) {
     size_t len;
     clGetProgramBuildInfo(c->program, c->deviceId, CL_PROGRAM_BUILD_LOG,
@@ -137,6 +138,40 @@ void buildExecute(napi_env env, void* data) {
     delete[] errorMsg;
     return;
   }
+
+  /*
+  // Query kernel for argument details
+  // should use to refactor manual parsing in createProgram below
+  char kernelName[100];
+  error = clGetKernelInfo(c->kernel, CL_KERNEL_FUNCTION_NAME, 100, &kernelName, NULL);
+  ASYNC_CL_ERROR;
+  printf("Kernel name %s\n", kernelName);
+
+  cl_uint numArgs = 0;
+  error = clGetKernelInfo(c->kernel, CL_KERNEL_NUM_ARGS, sizeof(numArgs), &numArgs, NULL);
+  ASYNC_CL_ERROR;
+  printf("%s: num args %d\n", kernelName, numArgs);
+
+  for (cl_uint p=0; p<numArgs; ++p) {
+    cl_kernel_arg_access_qualifier accessQualifier;
+    error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_ACCESS_QUALIFIER, sizeof(accessQualifier), &accessQualifier, NULL);
+    ASYNC_CL_ERROR;
+    printf("%s: param %d access %s\n", kernelName, p,
+      CL_KERNEL_ARG_ACCESS_READ_ONLY == accessQualifier ? "read only" :
+      CL_KERNEL_ARG_ACCESS_WRITE_ONLY == accessQualifier ? "write only" :
+      CL_KERNEL_ARG_ACCESS_READ_WRITE == accessQualifier ? "read write" :
+      "none");
+
+    char argTypeName[100];
+    error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_TYPE_NAME, 100, &argTypeName, NULL);
+    ASYNC_CL_ERROR;
+    printf ("%s: param %d argument type name %s\n", kernelName, p, argTypeName);
+    char argName[100];
+    error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_NAME, 100, &argName, NULL);
+    ASYNC_CL_ERROR;
+    printf ("%s: param %d argument name %s\n", kernelName, p, argName);
+  }
+  */
 
   c->totalTime = microTime(start);
 }
@@ -267,11 +302,12 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   }
   status = napi_set_named_property(env, program, "name", nameValue);
   CHECK_STATUS;
-  status = napi_get_value_string_utf8(env, nameValue, nullptr, 0, &carrier->nameLength);
+  size_t nameLength;
+  status = napi_get_value_string_utf8(env, nameValue, nullptr, 0, &nameLength);
   CHECK_STATUS;
 
-  char* name = (char *) malloc(carrier->nameLength + 1);
-  status = napi_get_value_string_utf8(env, nameValue, name, carrier->nameLength + 1, nullptr);
+  char* name = (char *)malloc(nameLength + 1);
+  status = napi_get_value_string_utf8(env, nameValue, name, nameLength + 1, nullptr);
   CHECK_STATUS;
   carrier->name = std::string(name);
   delete name;

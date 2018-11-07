@@ -39,7 +39,14 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (eParamFlags::VALUE != param->valueType) {
-      error = param->gpuAccess->setKernelParam(c->kernel, p, c->runParams);
+      cl_kernel_arg_access_qualifier accessQualifier;
+      error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_ACCESS_QUALIFIER, sizeof(accessQualifier), &accessQualifier, NULL);
+      ASYNC_CL_ERROR;
+      eMemFlags accessFlags = 
+        CL_KERNEL_ARG_ACCESS_READ_ONLY == accessQualifier ? eMemFlags::READONLY :
+        CL_KERNEL_ARG_ACCESS_WRITE_ONLY == accessQualifier ? eMemFlags::WRITEONLY :
+        eMemFlags::READWRITE;
+      error = param->gpuAccess->setKernelParam(c->kernel, p, accessFlags, c->runParams);
       ASYNC_CL_ERROR;
     }
   }
