@@ -22,7 +22,7 @@ class iGpuAccess {
 public:
   virtual ~iGpuAccess() {}
   virtual cl_int unmapMem() = 0;
-  virtual cl_int getKernelMem(iRunParams *runParams, eMemFlags accessFlags, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) = 0;
+  virtual cl_int getKernelMem(iRunParams *runParams, bool isImageParam, eMemFlags accessFlags, cl_mem &kernelMem) = 0;
   virtual void onGpuReturn() = 0;
 };
 
@@ -34,22 +34,16 @@ public:
     mGpuAccess->onGpuReturn();
   }
 
-  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, eMemFlags accessFlags, iRunParams *runParams) const {
+  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, eMemFlags accessFlags, iRunParams *runParams) const {
     cl_int error = CL_SUCCESS;
     error = mGpuAccess->unmapMem();
     PASS_CL_ERROR;
 
     cl_mem kernelMem = nullptr;
-    void *hostBuf = nullptr;
-    bool isSVM = false;
-    error = mGpuAccess->getKernelMem(runParams, accessFlags, kernelMem, hostBuf, isSVM);
+    error = mGpuAccess->getKernelMem(runParams, isImageParam, accessFlags, kernelMem);
     PASS_CL_ERROR;
 
-    // printf("setKernelParam %d: type %s, kernelMem %p, hostBuf %p\n", paramIndex, isSVM?"SVM":"NONE", kernelMem, hostBuf);
-    if (isSVM)
-      error = clSetKernelArgSVMPointer(kernel, paramIndex, hostBuf);
-    else
-      error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), &kernelMem);
+    error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), &kernelMem);
     return error;
   }
 
@@ -101,6 +95,7 @@ public:
     case eSvmType::FINE:
     case eSvmType::COARSE:
       mHostBuf = clSVMAlloc(mContext, clMemFlags, mNumBytes, 0);
+      mPinnedMem = clCreateBuffer(mContext, clMemFlags | CL_MEM_USE_HOST_PTR, mNumBytes, mHostBuf, &error);
       break;
     case eSvmType::NONE:
     default:
@@ -199,7 +194,7 @@ private:
     if (mHostMapped) {
       if (eSvmType::NONE == mSvmType)
         error = clEnqueueUnmapMemObject(mCommands, mPinnedMem, mHostBuf, 0, nullptr, nullptr);
-      else
+      else if (eSvmType::COARSE == mSvmType)
         error = clEnqueueSVMUnmap(mCommands, mHostBuf, 0, 0, 0);
       mHostMapped = false;
     }
@@ -220,26 +215,18 @@ private:
       PASS_CL_ERROR;
       if (depth) region[2] = depth;
 
-      printf("Copying image memory to buffer size %zdx%zd%s\n", region[0], region[1], eSvmType::NONE == mSvmType ? "":" using SVM !!");
-      if (eSvmType::NONE == mSvmType) {
-        error = clEnqueueCopyImageToBuffer(mCommands, mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
-        PASS_CL_ERROR;
-      } else {
-        error = clEnqueueReadImage(mCommands, mImageMem, CL_TRUE, origin, region, 0, 0, mHostBuf, 0, nullptr, nullptr);
-        PASS_CL_ERROR;
-      }
+      printf("Copying image memory to buffer size %zdx%zd\n", region[0], region[1]);
+      error = clEnqueueCopyImageToBuffer(mCommands, mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
+      PASS_CL_ERROR;
     }
     return error;
   }
 
-  cl_int getKernelMem(iRunParams *runParams, eMemFlags accessFlags, cl_mem &kernelMem, void *&hostBuf, bool &isSVM) {
+  cl_int getKernelMem(iRunParams *runParams, bool isImageParam, eMemFlags accessFlags, cl_mem &kernelMem) {
     kernelMem = mImageMem ? mImageMem : mPinnedMem;
-    hostBuf = mHostBuf;
-    isSVM = mImageMem ? false : eSvmType::NONE != mSvmType;
     const size_t origin[3] = { 0, 0, 0 };
     cl_int error = CL_SUCCESS;
 
-    bool isImageParam = runParams->getNumDims() > 1;
     if (isImageParam && !mImageMem) {
       // create new image object based on global work items as image dimensions
       std::vector<size_t> imageDims;
@@ -265,7 +252,6 @@ private:
       PASS_CL_ERROR;
 
       kernelMem = mImageMem;
-      isSVM = false;
 
       mImageAccessAttribute = accessFlags;
       if (eMemFlags::WRITEONLY != mImageAccessAttribute) {
@@ -274,13 +260,8 @@ private:
         size_t region[3] = { 1, 1, 1 };
         for (size_t i = 0; i < imageDims.size(); ++i)
           region[i] = imageDims[i];
-        if (eSvmType::NONE == mSvmType) {
-          error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
-          PASS_CL_ERROR;
-        } else {
-          error = clEnqueueWriteImage(mCommands, mImageMem, CL_TRUE, origin, region, 0, 0, mHostBuf, 0, nullptr, nullptr);
-          PASS_CL_ERROR;
-        }
+        error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+        PASS_CL_ERROR;
       }
     } else if (!isImageParam && mImageMem) {
       if (eMemFlags::READONLY != mImageAccessAttribute) {
@@ -294,7 +275,6 @@ private:
       mImageAccessAttribute = eMemFlags::READONLY;
 
       kernelMem = mPinnedMem;
-      isSVM = eSvmType::NONE != mSvmType;
     }
 
     return error;

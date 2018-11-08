@@ -46,7 +46,14 @@ void runExecute(napi_env env, void* data) {
         CL_KERNEL_ARG_ACCESS_READ_ONLY == accessQualifier ? eMemFlags::READONLY :
         CL_KERNEL_ARG_ACCESS_WRITE_ONLY == accessQualifier ? eMemFlags::WRITEONLY :
         eMemFlags::READWRITE;
-      error = param->gpuAccess->setKernelParam(c->kernel, p, accessFlags, c->runParams);
+
+      char argTypeName[20];
+      error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_TYPE_NAME, 20, &argTypeName, NULL);
+      ASYNC_CL_ERROR;
+      std::string typeName(argTypeName);
+      bool isImage = 0 == typeName.substr(0, 5).compare("image");
+
+      error = param->gpuAccess->setKernelParam(c->kernel, p, isImage, accessFlags, c->runParams);
       ASYNC_CL_ERROR;
     }
   }
