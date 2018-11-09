@@ -1,6 +1,6 @@
 {
   "name": "nodencl",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Experimental library for executing Open-CL kernels over Node.JS buffers.",
   "main": "index.js",
   "scripts": {
