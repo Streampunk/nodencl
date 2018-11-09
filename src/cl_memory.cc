@@ -14,6 +14,7 @@
 */
 
 #include "cl_memory.h"
+#include "noden_context.h"
 #include "noden_program.h"
 #include "noden_util.h"
 #include <vector>
@@ -53,11 +54,11 @@ private:
 
 class clMemory : public iClMemory, public iGpuAccess {
 public:
-  clMemory(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes)
+  clMemory(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, 
+           uint32_t numBytes, deviceInfo *devInfo)
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
-      mImageAccessAttribute(eMemFlags::READONLY)
-      {}
+      mImageAccessAttribute(eMemFlags::READONLY), mDevInfo(devInfo) {}
   ~clMemory() {
     cl_int error = CL_SUCCESS;
     error = unmapMem();
@@ -134,7 +135,7 @@ public:
                               (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
                               CL_MAP_READ;
       if (mImageMem) {
-        if (CL_MAP_WRITE != mapFlags) {
+        if ((mDevInfo->oclVer < clVersion(2,0)) && (CL_MAP_WRITE != mapFlags)) {
           error = copyImageToBuffer();
           if (CL_SUCCESS != error) return;
         }
@@ -188,6 +189,7 @@ private:
   bool mGpuLocked;
   bool mHostMapped;
   eMemFlags mImageAccessAttribute;
+  deviceInfo *mDevInfo;
 
   cl_int unmapMem() {
     cl_int error = CL_SUCCESS;
@@ -244,17 +246,16 @@ private:
       clImageDesc.image_width = imageDims[0];
       clImageDesc.image_height = imageDims.size() > 1 ? imageDims[1] : 0;
       clImageDesc.image_depth = imageDims.size() > 2 ? imageDims[2] : 0;
+      if (mDevInfo->oclVer >= clVersion(2,0))
+        clImageDesc.mem_object = mPinnedMem;
 
-      cl_mem_flags clMemFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
-                                (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
-                                CL_MEM_READ_WRITE;
+      cl_mem_flags clMemFlags = (eMemFlags::WRITEONLY == accessFlags) ? CL_MEM_WRITE_ONLY : CL_MEM_READ_ONLY;
       mImageMem = clCreateImage(mContext, clMemFlags, &clImageFormat, &clImageDesc, nullptr, &error);
       PASS_CL_ERROR;
 
       kernelMem = mImageMem;
-
       mImageAccessAttribute = accessFlags;
-      if (eMemFlags::WRITEONLY != mImageAccessAttribute) {
+      if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemFlags::WRITEONLY != mImageAccessAttribute)) {
         // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
         printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
         size_t region[3] = { 1, 1, 1 };
@@ -264,7 +265,7 @@ private:
         PASS_CL_ERROR;
       }
     } else if (!isImageParam && mImageMem) {
-      if (eMemFlags::READONLY != mImageAccessAttribute) {
+      if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemFlags::READONLY != mImageAccessAttribute)) {
         // don't copy back to buffer if this had a read-only argument attribute - the buffer is already up-to-date
         error = copyImageToBuffer();
         PASS_CL_ERROR;
@@ -285,6 +286,6 @@ private:
   }
 };
 
-iClMemory *iClMemory::create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes) {
-  return new clMemory(context, commands, memFlags, svmType, numBytes);
+iClMemory *iClMemory::create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes, deviceInfo *devInfo) {
+  return new clMemory(context, commands, memFlags, svmType, numBytes, devInfo);
 }

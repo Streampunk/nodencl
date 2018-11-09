@@ -37,6 +37,11 @@ void finalizeCommands(napi_env env, void* data, void* hint) {
   if (error != CL_SUCCESS) printf("Failed to release CL queue.\n");
 }
 
+void finalizeDevInfo(napi_env env, void* data, void* hint) {
+  printf("Device Info finalizer called.\n");
+  delete (deviceInfo *)data;
+}
+
 void createContextExecute(napi_env env, void* data) {
   createContextCarrier* c = (createContextCarrier*) data;
   cl_int error;
@@ -52,6 +57,11 @@ void createContextExecute(napi_env env, void* data) {
 
   c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
   ASYNC_CL_ERROR;
+
+  char version[30];
+  error = clGetDeviceInfo(c->deviceId, CL_DEVICE_VERSION, 30, version, nullptr);
+  ASYNC_CL_ERROR;
+  c->deviceVersion = std::string(version);
 
   c->totalTime = microTime(start);
 }
@@ -81,6 +91,13 @@ void createContextComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_create_external(env, c->commands, finalizeCommands, nullptr, &commands);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "commands", commands);
+  REJECT_STATUS;
+
+  deviceInfo *devInfo = new deviceInfo(clVersion(c->deviceVersion));
+  napi_value deviceInfoValue;
+  c->status = napi_create_external(env, devInfo, finalizeDevInfo, nullptr, &deviceInfoValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "deviceInfo", deviceInfoValue);
   REJECT_STATUS;
 
   napi_value createProgramValue;

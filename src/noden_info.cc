@@ -192,9 +192,9 @@ napi_status getPlatformParam(napi_env env, cl_platform_id platformId,
   char* paramString = (char *) malloc(sizeof(char) * paramSize);
   error = clGetPlatformInfo(platformId, param, paramSize, paramString, &paramSize);
   THROW_CL_ERROR;
-  free(paramString);
 
   status = napi_create_string_utf8(env, paramString, NAPI_AUTO_LENGTH, result);
+  free(paramString);
   return status;
 }
 

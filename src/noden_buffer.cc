@@ -17,6 +17,8 @@
 #include "noden_util.h"
 #include "cl_memory.h"
 
+struct deviceInfo;
+
 struct createBufCarrier : carrier {
   napi_ref contextRef = nullptr;
   iClMemory *clMem = nullptr;
@@ -345,11 +347,18 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
   cl_command_queue commands = (cl_command_queue) commandsData;
 
+  napi_value jsDevInfo;
+  deviceInfo *devInfo;
+  status = napi_get_named_property(env, contextValue, "deviceInfo", &jsDevInfo);
+  CHECK_STATUS;
+  status = napi_get_value_external(env, jsDevInfo, (void**)&devInfo);
+  CHECK_STATUS;
+
   status = napi_create_reference(env, contextValue, 1, &c->contextRef);
   CHECK_STATUS;
 
   // Create holder for host and gpu buffers
-  c->clMem = iClMemory::create(context, commands, memFlags, svmType, numBytes);
+  c->clMem = iClMemory::create(context, commands, memFlags, svmType, numBytes, devInfo);
 
   status = napi_create_reference(env, contextValue, 1, &c->passthru);
   CHECK_STATUS;

@@ -26,6 +26,7 @@
 #include <string>
 
 class iRunParams;
+struct deviceInfo;
 
 enum class eMemFlags : uint8_t { READWRITE = 0, WRITEONLY = 1, READONLY = 2 };
 enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
@@ -40,7 +41,8 @@ class iClMemory {
 public:
   virtual ~iClMemory() {}
 
-  static iClMemory *create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes);
+  static iClMemory *create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, 
+                           uint32_t numBytes, deviceInfo *devInfo);
 
   virtual bool allocate() = 0;
   virtual std::shared_ptr<iGpuMemory> getGPUMemory() = 0;

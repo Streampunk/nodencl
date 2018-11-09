@@ -21,14 +21,54 @@
 #else
     #include "CL/cl.h"
 #endif
+#include <stdio.h>
+#include <string>
+#include <tuple>
 #include "node_api.h"
 #include "noden_util.h"
+
+class clVersion {
+  public:
+    clVersion(uint32_t major, uint32_t minor) : mMajor(major), mMinor(minor) {}
+    clVersion(const std::string& clVersionStr) : mMajor(1), mMinor(0) { fromString(clVersionStr); }
+    ~clVersion() {}
+
+    friend bool operator<(const clVersion& l, const clVersion& r) {
+      return std::tie(l.mMajor, l.mMinor) < std::tie(r.mMajor, r.mMinor);
+    }
+    friend bool operator>(const clVersion& l, const clVersion& r) { return r < l; }
+    friend bool operator<=(const clVersion& l, const clVersion& r) { return !(l > r); }
+    friend bool operator>=(const clVersion& l, const clVersion& r) { return !(l < r); }
+
+    friend bool operator==(const clVersion& l, const clVersion& r) { 
+      return std::tie(l.mMajor, l.mMinor) == std::tie(r.mMajor, r.mMinor);
+    }
+    friend bool operator!=(const clVersion& l, const clVersion& r) { return !(l == r); }
+
+    std::string toString() const { return std::string("OpenCL ") + std::to_string(mMajor) + "." + std::to_string(mMinor); }
+
+  private:
+    uint32_t mMajor;
+    uint32_t mMinor;
+
+    void fromString(const std::string& clVersionStr) {
+      if (2 != sscanf(clVersionStr.c_str(), "%*s%d.%d", &mMajor, &mMinor))
+        printf("Unexpected version string %s - should start with \'OpenCL\'\n", clVersionStr.c_str());
+    }
+};
+
+struct deviceInfo {
+  clVersion oclVer;
+
+  deviceInfo(const clVersion& v) : oclVer(v) {}
+};
 
 struct createContextCarrier : carrier {
   cl_platform_id platformId;
   cl_device_id deviceId;
   cl_context context;
   cl_command_queue commands;
+  std::string deviceVersion;
 };
 
 napi_value createContext(napi_env env, napi_callback_info info);
