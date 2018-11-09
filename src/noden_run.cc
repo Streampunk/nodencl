@@ -14,7 +14,6 @@
 */
 
 #include "noden_run.h"
-#include "noden_program.h"
 #include "cl_memory.h"
 
 void runExecute(napi_env env, void* data) {
@@ -39,21 +38,7 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (eParamFlags::VALUE != param->valueType) {
-      cl_kernel_arg_access_qualifier accessQualifier;
-      error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_ACCESS_QUALIFIER, sizeof(accessQualifier), &accessQualifier, NULL);
-      ASYNC_CL_ERROR;
-      eMemFlags accessFlags = 
-        CL_KERNEL_ARG_ACCESS_READ_ONLY == accessQualifier ? eMemFlags::READONLY :
-        CL_KERNEL_ARG_ACCESS_WRITE_ONLY == accessQualifier ? eMemFlags::WRITEONLY :
-        eMemFlags::READWRITE;
-
-      char argTypeName[20];
-      error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_TYPE_NAME, 20, &argTypeName, NULL);
-      ASYNC_CL_ERROR;
-      std::string typeName(argTypeName);
-      bool isImage = 0 == typeName.substr(0, 5).compare("image");
-
-      error = param->gpuAccess->setKernelParam(c->kernel, p, isImage, accessFlags, c->runParams);
+      error = param->gpuAccess->setKernelParam(c->kernel, p, eParamFlags::IMAGE == param->valueType, param->access, c->runParams);
       ASYNC_CL_ERROR;
     }
   }
@@ -77,9 +62,9 @@ void runExecute(napi_env env, void* data) {
   c->dataToKernel = microTime(dataToKernelStart);
   HR_TIME_POINT kernelExecStart = NOW;
 
-  size_t numDims = c->runParams->getNumDims();
-  const size_t *global = c->runParams->getGlobalWorkItems();
-  const size_t *local = c->runParams->getWorkItemsPerGroup();
+  size_t numDims = c->runParams->numDims();
+  const size_t *global = c->runParams->globalWorkItems();
+  const size_t *local = c->runParams->workItemsPerGroup();
   error = clEnqueueNDRangeKernel(c->commands, c->kernel, numDims, nullptr, global, local, 0, nullptr, nullptr);
   ASYNC_CL_ERROR;
 
@@ -145,7 +130,7 @@ void runComplete(napi_env env, napi_status asyncStatus, void* data) {
   status = napi_resolve_deferred(env, c->_deferred, result);
 
   for (auto& paramIter: c->kernelParams)
-    delete(paramIter.second);
+    delete paramIter.second;
   tidyCarrier(env, c);
 }
 
@@ -172,16 +157,10 @@ napi_value run(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  napi_value kernelParamsValue;
-  status = napi_get_named_property(env, programValue, "kernelParams", &kernelParamsValue);
+  napi_value runParamsValue;
+  status = napi_get_named_property(env, programValue, "runParams", &runParamsValue);
   CHECK_STATUS;
-
-  napi_value paramNamesValue;
-  status = napi_get_property_names(env, kernelParamsValue, &paramNamesValue);
-  CHECK_STATUS;
-
-  uint32_t paramNamesCount;
-  status = napi_get_array_length(env, paramNamesValue, &paramNamesCount);
+  status = napi_get_value_external(env, runParamsValue, (void**)&c->runParams);
   CHECK_STATUS;
 
   napi_value runNamesValue;
@@ -192,79 +171,67 @@ napi_value run(napi_env env, napi_callback_info info) {
   status = napi_get_array_length(env, runNamesValue, &runNamesCount);
   CHECK_STATUS;
 
-  if (paramNamesCount != runNamesCount) {
+  uint32_t argNamesCount = (uint32_t)c->runParams->kernelArgMap().size();
+  if (argNamesCount != runNamesCount) {
     status = napi_throw_error(env, nullptr, "Incorrect number of parameters");
     return nullptr;
   }
 
-  for (uint32_t p=0; p<paramNamesCount; ++p) {
-    napi_value paramNameValue;
-    status = napi_get_element(env, paramNamesValue, p, &paramNameValue);
-    CHECK_STATUS;
+  for (uint32_t p=0; p<argNamesCount; ++p) {
+    iKernelArg *ka = c->runParams->kernelArgMap().at(p);
+    std::string argName(ka->name());
+    std::string argType(ka->type());
+    iKernelArg::eAccess argAccess(ka->access());
 
-    size_t paramNameLength;
-    status = napi_get_value_string_utf8(env, paramNameValue, nullptr, 0, &paramNameLength);
-    CHECK_STATUS;
-    char* paramName = (char*)malloc(paramNameLength + 1);
-    status = napi_get_value_string_utf8(env, paramNameValue, paramName, paramNameLength + 1, nullptr);
-    CHECK_STATUS;
-  
-    napi_value paramTypeValue;
-    status = napi_get_property(env, kernelParamsValue, paramNameValue, &paramTypeValue);
-    CHECK_STATUS;
-
-    size_t paramTypeLength;
-    status = napi_get_value_string_utf8(env, paramTypeValue, nullptr, 0, &paramTypeLength);
-    char* paramType = (char*)malloc(paramTypeLength + 1);
-    status = napi_get_value_string_utf8(env, paramTypeValue, paramType, paramTypeLength + 1, nullptr);
-    CHECK_STATUS;
+    napi_value argNameValue;
+    status = napi_create_string_utf8(env, argName.c_str(), argName.length(), &argNameValue);
 
     napi_value paramValue;
-    status = napi_get_property(env, args[0], paramNameValue, &paramValue);
+    status = napi_get_property(env, args[0], argNameValue, &paramValue);
     CHECK_STATUS;
     
     napi_valuetype valueType;
     status = napi_typeof(env, paramValue, &valueType);
     CHECK_STATUS;
 
-    kernelParam* kp = new kernelParam(paramName, paramType);
+    kernelParam* kp = new kernelParam(argName.c_str(), argType.c_str(), argAccess);
     switch (valueType) {
     case napi_undefined:
-      printf("Parameter name \'%s\' not found during run\n", paramName);
+      printf("Parameter name \'%s\' not found during run\n", argName.c_str());
       status = napi_throw_error(env, nullptr, "Parameter name not found during run");
       delete kp;
       return nullptr;
       break;
     case napi_number:
-      if (0 == strcmp("uint", paramType))
+      if (0 == argType.compare("uint"))
         status = napi_get_value_uint32(env, paramValue, &kp->value.uint32);
-      else if (0 == strcmp("int", paramType))
+      else if (0 == argType.compare("int"))
         status = napi_get_value_int32(env, paramValue, &kp->value.int32);
-      else if (0 == strcmp("long", paramType))
+      else if (0 == argType.compare("long"))
         status = napi_get_value_int64(env, paramValue, &kp->value.int64);
-      else if (0 == strcmp("float", paramType)) {
+      else if (0 == argType.compare("float")) {
         double tmp = 0.0;
         status = napi_get_value_double(env, paramValue, &tmp);
         kp->value.flt = (float)tmp;
       }
-      else if (0 == strcmp("double", paramType))
+      else if (0 == argType.compare("double"))
         status = napi_get_value_double(env, paramValue, &kp->value.dbl);
       else {
-        printf("Unsupported numeric parameter type: \'%s\'\n", paramType);
+        printf("Unsupported numeric parameter type: \'%s\'\n", argType.c_str());
         status = napi_throw_type_error(env, nullptr, "Unsupported numeric parameter type");
         delete kp;
         return nullptr;
       }
       break;
     case napi_object:
-      if (0 == strcmp("image2d_t", paramType)) {
+      if (0 == argType.compare("image2d_t")) {
         kp->valueType = eParamFlags::IMAGE;
         kp->paramType = std::string("image");
-      } else if ('*' == paramType[strlen(paramType)-1]) {
+      } else if (std::string::npos != argType.find('*')) {
         kp->valueType = eParamFlags::BUFFER;
         kp->paramType = std::string("ptr");
       } else {
-        printf("Parameter type \'%s\' not recognised as a buffer type\n", paramType);
+        printf("Parameter type \'%s\' not recognised as a buffer type\n", argType.c_str());
         status = napi_throw_error(env, nullptr, "Parameter type not recognised during run");
         delete kp;
         return nullptr;
@@ -282,8 +249,6 @@ napi_value run(napi_env env, napi_callback_info info) {
       return nullptr;
     }
     
-    free(paramName);
-    free(paramType);
     c->kernelParams.emplace(p, kp);
   }
 
@@ -310,12 +275,6 @@ napi_value run(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
   status = napi_get_value_external(env, jsKernel, &kernelData);
   c->kernel = (cl_kernel) kernelData;
-  CHECK_STATUS;
-
-  napi_value runParamsValue;
-  status = napi_get_named_property(env, programValue, "runParams", &runParamsValue);
-  CHECK_STATUS;
-  status = napi_get_value_external(env, runParamsValue, (void**)&c->runParams);
   CHECK_STATUS;
 
   status = napi_create_reference(env, programValue, 1, &c->passthru);

@@ -23,7 +23,7 @@ class iGpuAccess {
 public:
   virtual ~iGpuAccess() {}
   virtual cl_int unmapMem() = 0;
-  virtual cl_int getKernelMem(iRunParams *runParams, bool isImageParam, eMemFlags accessFlags, cl_mem &kernelMem) = 0;
+  virtual cl_int getKernelMem(iRunParams *runParams, bool isImageParam, iKernelArg::eAccess access, cl_mem &kernelMem) = 0;
   virtual void onGpuReturn() = 0;
 };
 
@@ -35,13 +35,13 @@ public:
     mGpuAccess->onGpuReturn();
   }
 
-  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, eMemFlags accessFlags, iRunParams *runParams) const {
+  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, iKernelArg::eAccess access, iRunParams *runParams) const {
     cl_int error = CL_SUCCESS;
     error = mGpuAccess->unmapMem();
     PASS_CL_ERROR;
 
     cl_mem kernelMem = nullptr;
-    error = mGpuAccess->getKernelMem(runParams, isImageParam, accessFlags, kernelMem);
+    error = mGpuAccess->getKernelMem(runParams, isImageParam, access, kernelMem);
     PASS_CL_ERROR;
 
     error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), &kernelMem);
@@ -58,7 +58,7 @@ public:
            uint32_t numBytes, deviceInfo *devInfo)
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
-      mImageAccessAttribute(eMemFlags::READONLY), mDevInfo(devInfo) {}
+      mImageAccessAttribute(iKernelArg::eAccess::READONLY), mDevInfo(devInfo) {}
   ~clMemory() {
     cl_int error = CL_SUCCESS;
     error = unmapMem();
@@ -144,7 +144,7 @@ public:
         // if (CL_MAP_READ != mapFlags) {
           error = clReleaseMemObject(mImageMem);
           mImageMem = nullptr;
-          mImageAccessAttribute = eMemFlags::READONLY;
+          mImageAccessAttribute = iKernelArg::eAccess::READONLY;
           if (CL_SUCCESS != error) return;
         // }
       }
@@ -188,7 +188,7 @@ private:
   void *mHostBuf;
   bool mGpuLocked;
   bool mHostMapped;
-  eMemFlags mImageAccessAttribute;
+  iKernelArg::eAccess mImageAccessAttribute;
   deviceInfo *mDevInfo;
 
   cl_int unmapMem() {
@@ -224,7 +224,7 @@ private:
     return error;
   }
 
-  cl_int getKernelMem(iRunParams *runParams, bool isImageParam, eMemFlags accessFlags, cl_mem &kernelMem) {
+  cl_int getKernelMem(iRunParams *runParams, bool isImageParam, iKernelArg::eAccess access, cl_mem &kernelMem) {
     kernelMem = mImageMem ? mImageMem : mPinnedMem;
     const size_t origin[3] = { 0, 0, 0 };
     cl_int error = CL_SUCCESS;
@@ -232,8 +232,8 @@ private:
     if (isImageParam && !mImageMem) {
       // create new image object based on global work items as image dimensions
       std::vector<size_t> imageDims;
-      for (size_t i = 0; i < runParams->getNumDims(); ++i)
-        imageDims.push_back(runParams->getGlobalWorkItems()[i]);
+      for (size_t i = 0; i < runParams->numDims(); ++i)
+        imageDims.push_back(runParams->globalWorkItems()[i]);
 
       cl_image_format clImageFormat;
       memset(&clImageFormat, 0, sizeof(clImageFormat));
@@ -249,13 +249,13 @@ private:
       if (mDevInfo->oclVer >= clVersion(2,0))
         clImageDesc.mem_object = mPinnedMem;
 
-      cl_mem_flags clMemFlags = (eMemFlags::WRITEONLY == accessFlags) ? CL_MEM_WRITE_ONLY : CL_MEM_READ_ONLY;
+      cl_mem_flags clMemFlags = (iKernelArg::eAccess::WRITEONLY == access) ? CL_MEM_WRITE_ONLY : CL_MEM_READ_ONLY;
       mImageMem = clCreateImage(mContext, clMemFlags, &clImageFormat, &clImageDesc, nullptr, &error);
       PASS_CL_ERROR;
 
       kernelMem = mImageMem;
-      mImageAccessAttribute = accessFlags;
-      if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemFlags::WRITEONLY != mImageAccessAttribute)) {
+      mImageAccessAttribute = access;
+      if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
         // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
         printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
         size_t region[3] = { 1, 1, 1 };
@@ -265,7 +265,7 @@ private:
         PASS_CL_ERROR;
       }
     } else if (!isImageParam && mImageMem) {
-      if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemFlags::READONLY != mImageAccessAttribute)) {
+      if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::READONLY != mImageAccessAttribute)) {
         // don't copy back to buffer if this had a read-only argument attribute - the buffer is already up-to-date
         error = copyImageToBuffer();
         PASS_CL_ERROR;
@@ -273,7 +273,7 @@ private:
       error = clReleaseMemObject(mImageMem);
       PASS_CL_ERROR;
       mImageMem = nullptr;
-      mImageAccessAttribute = eMemFlags::READONLY;
+      mImageAccessAttribute = iKernelArg::eAccess::READONLY;
 
       kernelMem = mPinnedMem;
     }

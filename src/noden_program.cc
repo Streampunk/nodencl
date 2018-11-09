@@ -15,22 +15,57 @@
 
 #include "noden_program.h"
 #include "noden_run.h"
+#include "run_params.h"
 #include <regex>
 #include <sstream>
 
+class kernelArg : public iKernelArg {
+  public:
+    kernelArg(const std::string& name, const std::string& type, eAccess access)
+      : mName(name), mType(type), mAccess(access) {}
+    ~kernelArg() {}
+
+    std::string name() const { return mName; }
+    std::string type() const { return mType; }
+    eAccess access() const { return mAccess; }
+
+    std::string toString() const {
+      return mType + " " + mName + (eAccess::READONLY == mAccess ? " readonly" :
+                                    eAccess::WRITEONLY == mAccess ? " writeonly" : 
+                                    "");
+    }
+ 
+  private:
+    const std::string mName;
+    const std::string mType;
+    const eAccess mAccess;
+};
+
 class runParams : public iRunParams {
 public:
-  runParams(const std::vector<size_t>& gwi, const std::vector<size_t>& wig) :
-    globalWorkItems(gwi), workItemsPerGroup(wig) {}
+  runParams(const std::vector<size_t>& gwi, const std::vector<size_t>& wig, const tKernelArgMap& kernelArgMap) :
+    mGlobalWorkItems(gwi), mWorkItemsPerGroup(wig), mKernelArgMap(kernelArgMap) {}
   ~runParams() {}
 
-  size_t getNumDims() const { return globalWorkItems.size(); }
-  const size_t *getGlobalWorkItems() const { return globalWorkItems.data(); }
-  const size_t *getWorkItemsPerGroup() const { return workItemsPerGroup.data(); }
+  size_t numDims() const { return mGlobalWorkItems.size(); }
+  const size_t *globalWorkItems() const { return mGlobalWorkItems.data(); }
+  const size_t *workItemsPerGroup() const { return mWorkItemsPerGroup.data(); }
+  const tKernelArgMap kernelArgMap() const { return mKernelArgMap; }
+
+  void argDebug(const std::string& kernelName) const {
+    printf("%s (\n", kernelName.c_str());
+    for (auto& argIter: mKernelArgMap) {
+      uint32_t p = argIter.first;
+      iKernelArg* arg = argIter.second;
+      printf("  %s\n", arg->toString().c_str());
+    }
+    printf(")\n");
+  }
 
 private:
-  const std::vector<size_t> globalWorkItems;
-  const std::vector<size_t> workItemsPerGroup;
+  const std::vector<size_t> mGlobalWorkItems;
+  const std::vector<size_t> mWorkItemsPerGroup;
+  const tKernelArgMap mKernelArgMap;
 };
 
 void tidyProgram(napi_env env, void* data, void* hint) {
@@ -49,7 +84,9 @@ void tidyKernel(napi_env env, void* data, void* hint) {
 
 void tidyParams(napi_env env, void* data, void* hint) {
   printf("Params finalizer called.\n");
-  runParams *rp = (runParams*)data;
+  iRunParams *rp = (iRunParams*)data;
+  for (auto& argIter: rp->kernelArgMap())
+     delete argIter.second;
   delete rp;
 }
 
@@ -59,15 +96,16 @@ void tidyProgramContextRef(napi_env env, void* data, void* hint) {
   napi_delete_reference(env, contextRef);
 }
 
-void tokenise(const std::string &str, const std::regex &regex, std::vector<std::string> &tokens)
-{
-  std::sregex_token_iterator it(str.begin(), str.end(), regex, -1);
-  std::sregex_token_iterator reg_end;
-
-  for (; it != reg_end; ++it) {
-    if (!it->str().empty()) //token could be empty:check
-      tokens.emplace_back(it->str());
-  }
+cl_int getArgInfo(cl_kernel kernel, cl_uint arg, cl_uint param, std::string& info) {
+  size_t paramLen = 0;
+  cl_int error = clGetKernelArgInfo(kernel, arg, param, 0, nullptr, &paramLen);
+  PASS_CL_ERROR;
+  char* paramStr = (char *)malloc(sizeof(char) * paramLen);
+  error = clGetKernelArgInfo(kernel, arg, param, paramLen, paramStr, NULL);
+  PASS_CL_ERROR;
+  info = std::string(paramStr);
+  free(paramStr);
+  return error;
 }
 
 // Promise to create a program with context and queue
@@ -92,7 +130,7 @@ void buildExecute(napi_env env, void* data) {
   }
   if (c->workItemsPerGroup.size() > 1) wigss << " ]";
 
-  printf("globalWorkItems: %s, workItemsPerGroup: %s\n", gwiss.str().c_str(), wigss.str().c_str());
+  // printf("globalWorkItems: %s, workItemsPerGroup: %s\n", gwiss.str().c_str(), wigss.str().c_str());
   HR_TIME_POINT start = NOW;
 
   const char* kernelSource[1];
@@ -117,7 +155,7 @@ void buildExecute(napi_env env, void* data) {
     return;
   }
 
-  c->kernel = clCreateKernel(c->program, c->name.c_str(), &error);
+  c->kernel = clCreateKernel(c->program, c->kernelName.c_str(), &error);
   ASYNC_CL_ERROR;
 
   size_t deviceWorkGroupSize;
@@ -139,39 +177,30 @@ void buildExecute(napi_env env, void* data) {
     return;
   }
 
-  /*
-  // Query kernel for argument details
-  // should use to refactor manual parsing in createProgram below
-  char kernelName[100];
-  error = clGetKernelInfo(c->kernel, CL_KERNEL_FUNCTION_NAME, 100, &kernelName, NULL);
-  ASYNC_CL_ERROR;
-  printf("Kernel name %s\n", kernelName);
-
   cl_uint numArgs = 0;
   error = clGetKernelInfo(c->kernel, CL_KERNEL_NUM_ARGS, sizeof(numArgs), &numArgs, NULL);
   ASYNC_CL_ERROR;
-  printf("%s: num args %d\n", kernelName, numArgs);
 
+  tKernelArgMap kernelArgMap;
   for (cl_uint p=0; p<numArgs; ++p) {
+    std::string argName;
+    error = getArgInfo(c->kernel, p, CL_KERNEL_ARG_NAME, argName);
+    ASYNC_CL_ERROR;
+
+    std::string argType;
+    error = getArgInfo(c->kernel, p, CL_KERNEL_ARG_TYPE_NAME, argType);
+    ASYNC_CL_ERROR;
+
     cl_kernel_arg_access_qualifier accessQualifier;
     error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_ACCESS_QUALIFIER, sizeof(accessQualifier), &accessQualifier, NULL);
     ASYNC_CL_ERROR;
-    printf("%s: param %d access %s\n", kernelName, p,
-      CL_KERNEL_ARG_ACCESS_READ_ONLY == accessQualifier ? "read only" :
-      CL_KERNEL_ARG_ACCESS_WRITE_ONLY == accessQualifier ? "write only" :
-      CL_KERNEL_ARG_ACCESS_READ_WRITE == accessQualifier ? "read write" :
-      "none");
-
-    char argTypeName[100];
-    error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_TYPE_NAME, 100, &argTypeName, NULL);
-    ASYNC_CL_ERROR;
-    printf ("%s: param %d argument type name %s\n", kernelName, p, argTypeName);
-    char argName[100];
-    error = clGetKernelArgInfo(c->kernel, p, CL_KERNEL_ARG_NAME, 100, &argName, NULL);
-    ASYNC_CL_ERROR;
-    printf ("%s: param %d argument name %s\n", kernelName, p, argName);
+    kernelArg::eAccess argAccess(CL_KERNEL_ARG_ACCESS_READ_ONLY == accessQualifier ? kernelArg::eAccess::READONLY :
+                                 CL_KERNEL_ARG_ACCESS_WRITE_ONLY == accessQualifier ? kernelArg::eAccess::WRITEONLY :
+                                 kernelArg::eAccess::NONE);
+    kernelArg *ka = new kernelArg(argName, argType, argAccess);
+    kernelArgMap.emplace(p, ka);
   }
-  */
+  c->runParams = new runParams(c->globalWorkItems, c->workItemsPerGroup, kernelArgMap);
 
   c->totalTime = microTime(start);
 }
@@ -213,9 +242,8 @@ void buildComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "buildTime", jsBuildTime);
   REJECT_STATUS;
 
-  runParams *rp = new runParams(c->globalWorkItems, c->workItemsPerGroup);
   napi_value runParamsValue;
-  c->status = napi_create_external(env, rp, tidyParams, nullptr, &runParamsValue);
+  c->status = napi_create_external(env, c->runParams, tidyParams, nullptr, &runParamsValue);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "runParams", runParamsValue);
   REJECT_STATUS;
@@ -300,54 +328,16 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
     status = napi_create_string_utf8(env, parsedName.c_str(), parsedName.length(), &nameValue);
     CHECK_STATUS;
   }
-  status = napi_set_named_property(env, program, "name", nameValue);
-  CHECK_STATUS;
+
   size_t nameLength;
   status = napi_get_value_string_utf8(env, nameValue, nullptr, 0, &nameLength);
   CHECK_STATUS;
 
-  char* name = (char *)malloc(nameLength + 1);
-  status = napi_get_value_string_utf8(env, nameValue, name, nameLength + 1, nullptr);
+  char* kernelName = (char *)malloc(nameLength + 1);
+  status = napi_get_value_string_utf8(env, nameValue, kernelName, nameLength + 1, nullptr);
   CHECK_STATUS;
-  carrier->name = std::string(name);
-  delete name;
-
-  napi_value kernelParamsValue;
-  status = napi_create_object(env, &kernelParamsValue);
-  CHECK_STATUS;
-
-  // parse the program parameters
-  std::string ks(carrier->kernelSource);
-  size_t progStart = ks.find(carrier->name);
-  size_t startParams = ks.find('(', progStart) + 1;
-  std::string paramStr(ks.substr(startParams, ks.find(')', progStart) - startParams));
-
-  std::vector<std::string> params;
-  tokenise(paramStr, std::regex(",+"), params);
-  for (auto& param: params) {
-    std::vector<std::string> paramTokens;
-    tokenise(param, std::regex("\\s+"), paramTokens);
-
-    std::string paramTypeStr;
-    if (0 == paramTokens[paramTokens.size()-3].compare("unsigned"))
-      paramTypeStr = std::string("u");
-
-    uint32_t tokenIndex = paramTokens.size() - 2;
-    if ((0 == paramTokens[tokenIndex].compare("const")) ||
-        (0 == paramTokens[tokenIndex].compare("restrict")) ||
-        (0 == paramTokens[tokenIndex].compare("volatile")))
-      --tokenIndex;
-    paramTypeStr.append(paramTokens[tokenIndex]);
-
-    napi_value paramType;
-    status = napi_create_string_utf8(env, paramTypeStr.c_str(), NAPI_AUTO_LENGTH, &paramType);
-    CHECK_STATUS;
-
-    status = napi_set_named_property(env, kernelParamsValue, paramTokens.back().c_str(), paramType);
-    CHECK_STATUS;
-  }
-  status = napi_set_named_property(env, program, "kernelParams", kernelParamsValue);
-  CHECK_STATUS;
+  carrier->kernelName = std::string(kernelName);
+  free(kernelName);
 
   napi_value globalWorkItemsValue;
   status = napi_has_named_property(env, config, "globalWorkItems", &hasProp);

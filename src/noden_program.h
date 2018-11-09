@@ -23,17 +23,11 @@
 #endif
 #include <vector>
 #include <string>
+#include <map>
 #include "node_api.h"
 #include "noden_util.h"
 
-class iRunParams {
-public:
-  virtual ~iRunParams() {}
-
-  virtual size_t getNumDims() const = 0;
-  virtual const size_t *getGlobalWorkItems() const = 0;
-  virtual const size_t *getWorkItemsPerGroup() const = 0;
-};
+class iRunParams;
 
 struct buildCarrier : carrier {
   std::string kernelSource;
@@ -45,10 +39,11 @@ struct buildCarrier : carrier {
   cl_command_queue commands;
   cl_program program;
   cl_kernel kernel;
-  std::string name;
+  std::string kernelName;
   cl_ulong svmCaps;
   std::vector<size_t> globalWorkItems;
   std::vector<size_t> workItemsPerGroup;
+  iRunParams *runParams;
 };
 
 napi_value createProgram(napi_env env, napi_callback_info info);

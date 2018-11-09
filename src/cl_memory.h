@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <memory>
 #include <string>
+#include "run_params.h"
 
 class iRunParams;
 struct deviceInfo;
@@ -34,7 +35,7 @@ enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
 class iGpuMemory {
 public:
   virtual ~iGpuMemory() {}
-  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, eMemFlags accessFlags, iRunParams *runParams) const = 0;
+  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, iKernelArg::eAccess access, iRunParams *runParams) const = 0;
 };
 
 class iClMemory {

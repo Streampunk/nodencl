@@ -26,18 +26,19 @@
 #include <map>
 #include "node_api.h"
 #include "noden_util.h"
+#include "run_params.h"
 
 class iClMemory;
 class iGpuMemory;
-class iRunParams;
 
 enum class eParamFlags : uint8_t { VALUE = 0, BUFFER = 1, IMAGE = 2 };
 
 struct kernelParam {
-  kernelParam(const std::string& paramName, const std::string& paramType) : 
-    name(paramName), paramType(paramType), valueType(eParamFlags::VALUE), value(0) {}
+  kernelParam(const std::string& paramName, const std::string& paramType, iKernelArg::eAccess access) : 
+    name(paramName), paramType(paramType), access(access), valueType(eParamFlags::VALUE), value(0) {}
   const std::string name;
   std::string paramType;
+  iKernelArg::eAccess access;
   eParamFlags valueType;
   union paramVal {
     paramVal(int64_t i): int64(i) {}
