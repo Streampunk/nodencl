@@ -71,11 +71,9 @@ async function noden() {
   const v210Writer = new v210_io.writer(context, width, height, colSpecWrite);
   await v210Writer.init();
 
-  const workItemsPerGroup = Uint32Array.from([ 8, 8 ]);
-  const globalWorkItems = Uint32Array.from([ width, height ]);
+  // const globalWorkItems = Uint32Array.from([ width, height ]);
   const testImageProgram = await context.createProgram(testImage, {
-    globalWorkItems: globalWorkItems,
-    workItemsPerGroup: workItemsPerGroup
+    globalWorkItems: Uint32Array.from([ width, height ])
   });
 
   const numBytesV210 = v210_io.getPitchBytes(width) * height;

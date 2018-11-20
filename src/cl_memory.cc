@@ -249,8 +249,7 @@ private:
       if (mDevInfo->oclVer >= clVersion(2,0))
         clImageDesc.mem_object = mPinnedMem;
 
-      cl_mem_flags clMemFlags = (iKernelArg::eAccess::WRITEONLY == access) ? CL_MEM_WRITE_ONLY : CL_MEM_READ_ONLY;
-      mImageMem = clCreateImage(mContext, clMemFlags, &clImageFormat, &clImageDesc, nullptr, &error);
+      mImageMem = clCreateImage(mContext, CL_MEM_READ_WRITE, &clImageFormat, &clImageDesc, nullptr, &error);
       PASS_CL_ERROR;
 
       kernelMem = mImageMem;

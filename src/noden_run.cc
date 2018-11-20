@@ -78,7 +78,7 @@ void runExecute(napi_env env, void* data) {
   // for (auto& paramIter: c->kernelParams) {
   //   uint32_t p = paramIter.first;
   //   kernelParam* param = paramIter.second;
-  //   if ((eParamFlags::BUFFER == param->valueType) && (eMemFlags::WRITEONLY == param->value.nodenBuf->memFlags())) {
+  //   if ((eParamFlags::VALUE != param->valueType) && (eMemFlags::WRITEONLY == param->value.clMem->memFlags())) {
   //     param->gpuAccess.reset();
   //     param->value.clMem->setHostAccess(error, eMemFlags::READONLY);
   //     ASYNC_CL_ERROR;
