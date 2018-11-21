@@ -60,28 +60,7 @@ public:
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
       mImageAccessAttribute(iKernelArg::eAccess::READONLY), mDevInfo(devInfo) {}
   ~clMemory() {
-    cl_int error = CL_SUCCESS;
-    error = unmapMem();
-    if (CL_SUCCESS != error)
-      printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
-        __FILE__, __LINE__, error, clGetErrorString(error));
-
-    if (eSvmType::NONE != mSvmType)
-      clSVMFree(mContext, mHostBuf);
-
-    if (mImageMem) {
-      error = clReleaseMemObject(mImageMem);
-      if (CL_SUCCESS != error)
-        printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
-          __FILE__, __LINE__, error, clGetErrorString(error));
-    }
-
-    if (mPinnedMem) {
-      error = clReleaseMemObject(mPinnedMem);
-      if (CL_SUCCESS != error)
-        printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
-          __FILE__, __LINE__, error, clGetErrorString(error));
-    }
+    freeAllocation();
   }
 
   bool allocate() {
@@ -164,6 +143,35 @@ public:
     }
   }
 
+  void freeAllocation() {
+    cl_int error = CL_SUCCESS;
+    error = unmapMem();
+    if (CL_SUCCESS != error)
+      printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
+        __FILE__, __LINE__, error, clGetErrorString(error));
+
+    if (mHostBuf && (eSvmType::NONE != mSvmType))
+      clSVMFree(mContext, mHostBuf);
+
+    if (mImageMem) {
+      error = clReleaseMemObject(mImageMem);
+      if (CL_SUCCESS != error)
+        printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
+          __FILE__, __LINE__, error, clGetErrorString(error));
+    }
+
+    if (mPinnedMem) {
+      error = clReleaseMemObject(mPinnedMem);
+      if (CL_SUCCESS != error)
+        printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
+          __FILE__, __LINE__, error, clGetErrorString(error));
+    }
+
+    mPinnedMem = nullptr;
+    mImageMem = nullptr;
+    mHostBuf = nullptr;
+  }
+
   uint32_t numBytes() const { return mNumBytes; }
   eMemFlags memFlags() const { return mMemFlags; }
   eSvmType svmType() const { return mSvmType; }
@@ -217,7 +225,7 @@ private:
       PASS_CL_ERROR;
       if (depth) region[2] = depth;
 
-      printf("Copying image memory to buffer size %zdx%zd\n", region[0], region[1]);
+      // printf("Copying image memory to buffer size %zdx%zd\n", region[0], region[1]);
       error = clEnqueueCopyImageToBuffer(mCommands, mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
       PASS_CL_ERROR;
     }
@@ -256,7 +264,7 @@ private:
       mImageAccessAttribute = access;
       if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
         // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
-        printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
+        // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
         size_t region[3] = { 1, 1, 1 };
         for (size_t i = 0; i < imageDims.size(); ++i)
           region[i] = imageDims[i];

@@ -69,7 +69,7 @@ void createContextExecute(napi_env env, void* data) {
 void createContextComplete(napi_env env, napi_status asyncStatus, void* data) {
   createContextCarrier* c = (createContextCarrier*) data;
 
-  printf("Context created with status %i.\n", asyncStatus);
+  // printf("Context created with status %i.\n", asyncStatus);
 
   if (asyncStatus != napi_ok) {
     c->status = asyncStatus;

@@ -48,6 +48,7 @@ public:
   virtual bool allocate() = 0;
   virtual std::shared_ptr<iGpuMemory> getGPUMemory() = 0;
   virtual void setHostAccess(cl_int &error, eMemFlags haFlags) = 0; // map GPU buffer to host
+  virtual void freeAllocation() = 0;
 
   virtual uint32_t numBytes() const = 0;
   virtual eMemFlags memFlags() const = 0;

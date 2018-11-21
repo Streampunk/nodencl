@@ -169,9 +169,27 @@ void finalizeContextRef(napi_env env, void* data, void* hint) {
   checkStatus(env, status, __FILE__, __LINE__ - 1);
 }
 
+napi_value freeAllocation(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value args[1];
+  size_t argc = 1;
+  napi_value bufferValue;
+  iClMemory *clMem = nullptr;
+  status = napi_get_cb_info(env, info, &argc, args, &bufferValue, (void**)&clMem);
+  CHECK_STATUS;
+
+  printf("Freeing OpenCL memory of type %s, size %d.\n", clMem->svmTypeName().c_str(), clMem->numBytes());
+  clMem->freeAllocation();
+
+  napi_value result;
+  status = napi_get_undefined(env, &result);
+  CHECK_STATUS;
+  return result;
+}
+
 void createBufferExecute(napi_env env, void* data) {
   createBufCarrier* c = (createBufCarrier*) data;
-  printf("Create a buffer of type %s, size %d.\n", c->clMem->svmTypeName().c_str(), c->clMem->numBytes());
+  // printf("Create a buffer of type %s, size %d.\n", c->clMem->svmTypeName().c_str(), c->clMem->numBytes());
 
   HR_TIME_POINT start = NOW;
 
@@ -224,6 +242,13 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
     hostAccess, nullptr, &hostAccessValue);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "hostAccess", hostAccessValue);
+  REJECT_STATUS;
+
+  napi_value freeAllocValue;
+  c->status = napi_create_function(env, "freeAllocation", NAPI_AUTO_LENGTH,
+    freeAllocation, c->clMem, &freeAllocValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "freeAllocation", freeAllocValue);
   REJECT_STATUS;
 
   napi_status status;
