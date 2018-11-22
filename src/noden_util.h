@@ -55,7 +55,7 @@ const char* clGetErrorString(cl_int error);
 long long microTime(std::chrono::high_resolution_clock::time_point start);
 
 // Argument processing
-napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
+napi_status checkArgs(napi_env env, napi_callback_info info, const char* methodName,
   napi_value* args, size_t argc, napi_valuetype* types);
 
 // Async error handling
@@ -76,7 +76,7 @@ struct carrier {
 };
 
 void tidyCarrier(napi_env env, carrier* c);
-int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line);
+int32_t rejectStatus(napi_env env, carrier* c, const char* file, int32_t line);
 
 #define ASYNC_CL_ERROR if (error != CL_SUCCESS) { \
   c->status = error; \

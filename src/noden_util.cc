@@ -47,8 +47,8 @@ napi_status checkStatus(napi_env env, napi_status status,
   }
 
   char errorCode[20];
-  throwStatus = napi_throw_error(env,
-    itoa(errorInfo->error_code, errorCode, 10), errorInfo->error_message);
+  snprintf(errorCode, 20, "%d", errorInfo->error_code);
+  throwStatus = napi_throw_error(env, errorCode, errorInfo->error_message);
   assert(throwStatus == napi_ok);
 
   return napi_pending_exception; // Expect to be cast to void
@@ -132,8 +132,8 @@ cl_int clCheckError(napi_env env, cl_int error,
     file, line, error, clGetErrorString(error));
 
   char errorCode[20];
-  throwStatus = napi_throw_error(env,
-    itoa(error, errorCode, 10), clGetErrorString(error));
+  snprintf(errorCode, 20, "%d", error);
+  throwStatus = napi_throw_error(env, errorCode, clGetErrorString(error));
   assert(throwStatus == napi_ok);
 
   return error;
@@ -159,7 +159,7 @@ const char* getNapiTypeName(napi_valuetype t) {
   }
 }
 
-napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
+napi_status checkArgs(napi_env env, napi_callback_info info, const char* methodName,
   napi_value* args, size_t argc, napi_valuetype* types) {
 
   napi_status status;
@@ -177,7 +177,7 @@ napi_status checkArgs(napi_env env, napi_callback_info info, char* methodName,
   }
 
   napi_valuetype t;
-  for ( int x = 0 ; x < argc ; x++ ) {
+  for ( int x = 0 ; x < (int)argc ; x++ ) {
     status = napi_typeof(env, args[x], &t);
     if (status != napi_ok) return status;
     if (t != types[x]) {
@@ -204,15 +204,15 @@ void tidyCarrier(napi_env env, carrier* c) {
   delete c;
 }
 
-int32_t rejectStatus(napi_env env, carrier* c, char* file, int32_t line) {
+int32_t rejectStatus(napi_env env, carrier* c, const char* file, int32_t line) {
   if (c->status != NODEN_SUCCESS) {
     napi_value errorValue, errorCode, errorMsg;
     napi_status status;
-    char errorChars[20];
+    char statusChars[20];
+    snprintf(statusChars, 20, "%d", c->status);
     char* extMsg = (char *) malloc(sizeof(char) * c->errorMsg.length() + 200);
     sprintf(extMsg, "In file %s on line %i, found error: %s", file, line, c->errorMsg.c_str());
-    status = napi_create_string_utf8(env, itoa(c->status, errorChars, 10),
-      NAPI_AUTO_LENGTH, &errorCode);
+    status = napi_create_string_utf8(env, statusChars, NAPI_AUTO_LENGTH, &errorCode);
     FLOATING_STATUS;
     status = napi_create_string_utf8(env, extMsg, NAPI_AUTO_LENGTH, &errorMsg);
     FLOATING_STATUS;

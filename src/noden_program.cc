@@ -57,7 +57,7 @@ public:
     for (auto& argIter: mKernelArgMap) {
       uint32_t p = argIter.first;
       iKernelArg* arg = argIter.second;
-      printf("  %s\n", arg->toString().c_str());
+      printf("  %d: %s\n", p, arg->toString().c_str());
     }
     printf(")\n");
   }

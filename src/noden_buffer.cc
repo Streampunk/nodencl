@@ -16,6 +16,7 @@
 #include "noden_buffer.h"
 #include "noden_util.h"
 #include "cl_memory.h"
+#include <cstring>
 
 struct deviceInfo;
 

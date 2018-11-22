@@ -20,11 +20,10 @@ void runExecute(napi_env env, void* data) {
   runCarrier* c = (runCarrier*) data;
   cl_int error;
 
-  HR_TIME_POINT bufAlloc = NOW;
+  // HR_TIME_POINT bufAlloc = NOW;
   // Not recording buffer create time - should probably be done once, before here
 
   for (auto& paramIter: c->kernelParams) {
-    uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (eParamFlags::VALUE != param->valueType)
       param->gpuAccess = param->value.clMem->getGPUMemory();
@@ -128,6 +127,7 @@ void runComplete(napi_env env, napi_status asyncStatus, void* data) {
 
   napi_status status;
   status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
 
   for (auto& paramIter: c->kernelParams)
     delete paramIter.second;

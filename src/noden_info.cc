@@ -157,13 +157,13 @@ cl_int getPlatformIds(std::vector<cl_platform_id> &ids) {
   return CL_SUCCESS;
 }
 
-cl_int getDeviceIds(cl_uint platformId, std::vector<cl_device_id> &ids) {
+cl_int getDeviceIds(cl_int platformId, std::vector<cl_device_id> &ids) {
   cl_int error;
   std::vector<cl_platform_id> platformIds;
   error = getPlatformIds(platformIds);
   PASS_CL_ERROR;
 
-  if (platformId < 0 || platformId >= platformIds.size()) {
+  if (platformId < 0 || platformId >= (cl_int)platformIds.size()) {
     return CL_INVALID_VALUE;
   }
 

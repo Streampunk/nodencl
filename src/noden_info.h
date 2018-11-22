@@ -25,7 +25,7 @@
 #include "node_api.h"
 
 cl_int getPlatformIds(std::vector<cl_platform_id> &ids);
-cl_int getDeviceIds(cl_uint platformId, std::vector<cl_device_id> &ids);
+cl_int getDeviceIds(cl_int platformId, std::vector<cl_device_id> &ids);
 napi_value getPlatformInfo(napi_env env, napi_callback_info info);
 napi_value findFirstGPU(napi_env env, napi_callback_info info);
 napi_status getDeviceParamString(napi_env env, cl_device_id deviceId,
@@ -51,7 +51,7 @@ typedef napi_status (*getParamFunc)(napi_env, cl_device_id, cl_device_info, napi
 
 struct deviceParam {
   cl_device_info deviceInfo;
-  char* name;
+  const char* name;
   getParamFunc getParam;
 };
 
