@@ -1,7 +1,7 @@
 # nodencl
 Experimental library for executing [OpenCL](https://www.khronos.org/opencl/) kernels over [Node.JS](https://nodejs.org/) [buffers](https://nodejs.org/dist/latest-v8.x/docs/api/buffer.html). The aim of this library is to expose GPU processing capability into Node.JS in the simplest and most efficient way possible, with OpenCL programs represented as Javascript strings and buffers using shared virtual memory wherever possible.
 
-The initial purpose of this library was to test data movement speeds for real time (or faster) uncompressed video. The aim of this library is to support the development of GPU accelerated functions for processing 10-bit and higher professional HD and UHD video formats.
+The aim of this library is to support the development of GPU accelerated functions for processing 10-bit and higher professional HD and UHD video formats.
 
 ### Approach
 
@@ -14,7 +14,7 @@ The second approach is adopted for nodencl (_Node and OpenCL_), with promises fa
 
 ### Native bindings
 
-Development of this binding has been made simpler thanks to the experimental [N-API](https://nodejs.org/dist/latest-v8.x/docs/api/n-api.html) for the development of C++ addons for Node.JS. In particular, the new support for implementing promises exposed into C/C++. Note that N-API will become a core part of Node.JS in version 10 LTS available from October 2018. Until then, a warning about this features being experimental will be printed.
+Development of this binding has been made simpler thanks to [N-API](https://nodejs.org/dist/latest-v8.x/docs/api/n-api.html) for the development of C++ addons for Node.JS. In particular, the support for implementing promises exposed into C/C++. Note that N-API is a core part of Node.JS in version 10 LTS and later. In earler Node.JS versions a warning about this feature being experimental will be printed.
 
 ### Supported platform
 
@@ -120,43 +120,47 @@ const kernel = `__kernel void square(
     output[i] = input[i] - i % 7;
 }`;
 ```
+Support for kernel parameters currently includes all scalar types, buffer pointers including vector types and image2d types.
 
-Create an OpenCL context using the `nodencl.createContext()` function. This returns a promise that resolves to an OpenCL _context_ which includes a single command queue for supporting OpenCL programs and memory buffers on a single platform and device.
-
+Create an OpenCL context by creating an instance of the clContext object:
 ```Javascript
-let contextPromise = nodencl.createContext();
-contextPromise.then(context => ..., console.error);
+const context = new addon.clContext();
 ```
-The object returned by the method contains the native OpenCL structures required to support creating programs, kernels and memory buffers. In this default mode with no options, the first device on the system that is of type GPU is selected. This can also be determined by calling the `nodencl.findFirstGPU()` function.
+This object wraps a member that is a promise that resolves to an OpenCL _context_ which includes a single command queue for supporting OpenCL programs and memory buffers on a single platform and device.
 
-To select a specific device options can be provided as an argument to `createContext()`. The options must include a numerical `platformIndex` and `deviceIndex` that are the indexes into the array of platform details, then the `devices` property of each platform, as returned by `getPlatformInfo()`. For example:
+The resolved object contains the native OpenCL structures required to support creating programs, kernels and memory buffers. In this default mode with no options, the first device on the system that is of type GPU is selected.
+
+To select a specific device options can be provided as an argument to the clContext constructor. The options must include a numerical `platformIndex` and `deviceIndex` that are the indexes into the array of platform details, then the `devices` property of each platform, as returned by `getPlatformInfo()`. For example:
 
 ```Javascript
-let contextPromise = nodencl.createContext(kernel,
+const context = new addon.clContext(
   { platformIndex: 1, deviceIndex: 0 });
-contextPromise.then(context => ..., console.error);
 ```
 
-Create an OpenCL program using the `context.createProgram()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to an OpenCL compiled kernel for an OpenCL _program_ as a program object.
+An optional second parameter allows the provision of a custom logging object with log, warn and error methods. By default the console object will be used.
+
+Retrieve the platform info as above for the specific platform selected using `context.getPlatformInfo()`;
+
+Create an OpenCL program using the `context.createProgram()` method of the context object. This returns a promise that resolves to an OpenCL compiled kernel for an OpenCL _program_ as a program object.
 
 ```Javascript
-let progPromise = context.createProgram(kernel);
+const progPromise = context.createProgram(kernel);
 progPromise.then(program => ..., console.error);
 ```
 
 The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. To explicitly name the function in the kernel code that is the entry point for the kernel (e.g. `square` in the example above), options can be provided as the second argument to `createProgram()`. The `name` property gives the name of the kernel entry point function. For example:
 
 ```Javascript
-let progPromise = context.createProgram(kernel,
+const progPromise = context.createProgram(kernel,
   { name: 'square' });
 progPromise.then(program => ..., console.error);
 ```
 
 ### Creating data buffers
 
-OpenCL buffers allow data to be exchanged between the Node.JS program and the execution context of the Open CL kernel, managing either the transfer of data between system RAM and graphics RAM or the sharing of virtual memory between devices. Once created, the data buffer is wrapped in a Node.JS Buffer object that can be used like any other. When the OpenCL program is executed, nodencl takes care of passing the data to and from kernel device.
+OpenCL buffers allow data to be exchanged between the Node.JS program and the execution context of the Open CL kernel, managing either the transfer of data between system RAM and graphics RAM or the sharing of virtual memory between devices. Once created, the data buffer is wrapped in a Node.JS Buffer object that can be used like any other. When the OpenCL program is executed, nodencl takes care of passing the data to and from the kernel device.
 
-To create a data buffer, use the `context.createBuffer()` method of the context object returned by `nodencl.createContext()`. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
+To create a data buffer, use the `context.createBuffer()` method of the context object. This returns a promise that resolves to a buffer of the requested size and type. For example, within the body of an ES6 _async_ function:
 
 ```Javascript
 let input = await context.createBuffer(65536, 'readonly');
@@ -166,9 +170,9 @@ let output = await context.createBuffer(9000, 'writeonly', 'fine');
 ... or to execute in parallel ...
 
 ```Javascript
-let [input, outuput] = await Promise.all([
+let [input, output] = await Promise.all([
   context.createBuffer(65536, 'readonly'),
-  context.createBuffer(9000, 'writeonly', 'fine')
+  context.createBuffer(9000, 'writeonly', 'fine', 'myOut')
 ]);
 ```
 
@@ -177,6 +181,18 @@ The first argument is normally the size of the desired buffer in bytes. Passing 
 The second argument describes the intended use of the buffer with respect to execution of kernel functions - either 'readonly' for input parameters, 'writeonly' for output parameters or 'readwrite' if the buffer will be used in both directions.
 
 The third optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). When this argument is not present, the default value is the expected-to-be-fastest kind of memory supported by the device.
+
+The fourth optional argument is a string that allows allocations to have an owner name associated with them. This can be helpful in logging and enables resource management as follows.
+
+Graphics RAM is a limited resource. To help manage this nodencl includes a resource management system that allows buffer allocations to be referenced and released. When a buffer is created with an owner, it is marked as 'reserved'. The buffer provides two methods '`addRef()`' and '`release()`' that are used to control the buffer lifetime.
+
+`buffer.addRef()` should be called before the buffer is passed as a parameter to a kernel function, `buffer.release()` should be called when the buffer (and its contents) are no longer required. When `release` is called if there are no outstanding references (from `addRef`) then the buffer will no longer be marked as reserved. This means that when a caller requests to create a new buffer with the same attributes they can be returned the unreserved existing buffer.
+
+Once a buffer has been unreserved, it becomes a candidate to be freed if graphics memory is running short. Callers should not attempt to `addRef` a buffer that has already been unreserved.
+
+If an owner name has been used for buffer allocations then the `context.releaseBuffers(owner)` function can be used to completely free all allocations with a particular owner name.
+
+### Host access to data buffers
 
 In order to allow normal host access to the buffer for read and write operations in Javascript, use the `buffer.hostAccess()` method of the buffer object. This returns a promise that resolves when host access is available. For example:
 
@@ -198,8 +214,17 @@ To run the kernel having created a program object, created the input and output 
 let execTimings = await program.run({input: input, output: output});
 console.log(JSON.stringify(execTimings, null, 2));
 ```
+### Cleaning up
 
-An example output of the above code fragment is:
+When finished with the context object, it should be closed in order to ensure all allocations are freed:
+```Javascript
+clContext.close(done => {  });
+```
+The callback will be called when all allocations have been freed. If owner names and the `releaseBuffers` method detailed above are not used then a warning message will be emitted that a timeout has been used to free the allocations.
+
+### Testing
+
+An example output of the above kernel code fragment is:
 
 ```JSON
 {
@@ -212,11 +237,9 @@ An example output of the above code fragment is:
 
 The results are measurements in microseconds for the total time (`totalTime`) taken to run the program, the time taken to move data to the kernel (`dataToKernel`), the time taken to execute the kernel (`kernelExec`) and the time taken to make the result available in system memory (`dataFromKernel`). On resolution of the promise, the output buffer will contain the result of the execution.
 
-Note that the execution model is currently limited to a single input and single output buffer. The intention is to add support for input and output objects with names parameters that can be matched with the function parameters of the kernel entry point function. Note also that the size of the input buffer is passed as the `count` parameter into the kernel.
-
 ### Measuring performance
 
-A example test script that moves blocks of memory of a given size to and from the system memory and GPU memory, executing an example kernel process between, is provided as script [`measureWriteExecRead.js`](scratch/measureWriteExecRead.js). To run the script:
+An example test script that moves blocks of memory of a given size to and from the system memory and GPU memory, executing an example kernel process between, is provided as script [`measureWriteExecRead.js`](scratch/measureWriteExecRead.js). To run the script:
 
     node scratch/measureWriteExecRead.js <buffer_size> <svm_type>
 
@@ -228,9 +251,8 @@ Contributions can be made via pull requests and will be considered by the author
 
 Next steps include:
 
-* a flexible approach to attaching multiple kernel input parameters;
-* support for numerical data types other than Uint8 via Javascript typed arrays;
-* consideration of how to use OpenCL pipelines;
+* support for Javascript typed arrays;
+* consideration of whether and how to use OpenCL pipelines;
 * control of how work is split up into threads;
 * adding support for OpenCL SDKs from nVidia and AMD;
 * adding support for linux and Mac platforms.

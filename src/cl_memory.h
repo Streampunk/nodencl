@@ -29,7 +29,7 @@
 class iRunParams;
 struct deviceInfo;
 
-enum class eMemFlags : uint8_t { READWRITE = 0, WRITEONLY = 1, READONLY = 2 };
+enum class eMemFlags : uint8_t { NONE = 0, READWRITE = 1, WRITEONLY = 2, READONLY = 3 };
 enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
 
 class iGpuMemory {

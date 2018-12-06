@@ -179,7 +179,7 @@ napi_value freeAllocation(napi_env env, napi_callback_info info) {
   status = napi_get_cb_info(env, info, &argc, args, &bufferValue, (void**)&clMem);
   CHECK_STATUS;
 
-  printf("Freeing OpenCL memory of type %s, size %d.\n", clMem->svmTypeName().c_str(), clMem->numBytes());
+  // printf("Freeing OpenCL memory of type %s, size %d.\n", clMem->svmTypeName().c_str(), clMem->numBytes());
   clMem->freeAllocation();
 
   napi_value result;

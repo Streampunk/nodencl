@@ -31,16 +31,15 @@ function dumpFloatBuf(buf, width, numPixels, numLines) {
 }
 
 async function noden() {
-  const platformIndex = 1;
+  const platformIndex = 0;
   const deviceIndex = 0;
-  const platformInfo = addon.getPlatformInfo()[platformIndex];
-  // console.log(JSON.stringify(platformInfo, null, 2));
-  console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
-
-  const context = await addon.createContext({
+  const context = new addon.clContext({
     platformIndex: platformIndex, 
     deviceIndex: deviceIndex
   });
+  const platformInfo = context.getPlatformInfo();
+  // console.log(JSON.stringify(platformInfo, null, 2));
+  console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
   const colSpecRead = '709';
   const colSpecWrite = '2020';
@@ -79,10 +78,10 @@ async function noden() {
 
   await v210Src.hostAccess('readonly');
   console.log('Compare returned', v210Src.compare(v210Dst));
-
+  
   return [v210Src, v210Dst];
 }
 noden()
-  .then(([i, o]) => { return [i.creationTime, o.creationTime] })
+  .then(([i, o]) => [i.creationTime, o.creationTime])
   .then(([ict, oct]) => { if (global.gc) global.gc(); console.log(ict, oct); })
-  .catch( console.error );
+  .catch(console.error);

@@ -59,7 +59,7 @@ public:
            uint32_t numBytes, deviceInfo *devInfo)
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
-      mImageAccessAttribute(iKernelArg::eAccess::READONLY), mDevInfo(devInfo) {}
+      mMapFlags(eMemFlags::NONE), mImageAccessAttribute(iKernelArg::eAccess::NONE), mDevInfo(devInfo) {}
   ~clMemory() {
     freeAllocation();
   }
@@ -90,6 +90,7 @@ public:
         printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
           __FILE__, __LINE__, error, clGetErrorString(error));
       mHostMapped = true;
+      mMapFlags = (eMemFlags::READONLY == mMemFlags) ? eMemFlags::WRITEONLY : eMemFlags::READWRITE;
       break;
     }
 
@@ -110,7 +111,7 @@ public:
       return;
     }
 
-    if (!mHostMapped) {
+    if (!(mHostMapped && (haFlags == mMapFlags))) {
       cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
                               (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
                               CL_MAP_READ;
@@ -141,6 +142,8 @@ public:
         error = clEnqueueSVMMap(mCommands, CL_TRUE, mapFlags, mHostBuf, mNumBytes, 0, 0, 0);
         mHostMapped = true;
       }
+
+      mMapFlags = haFlags;
     }
   }
 
@@ -197,6 +200,7 @@ private:
   void *mHostBuf;
   bool mGpuLocked;
   bool mHostMapped;
+  eMemFlags mMapFlags;
   iKernelArg::eAccess mImageAccessAttribute;
   deviceInfo *mDevInfo;
 
@@ -208,6 +212,7 @@ private:
       else if (eSvmType::COARSE == mSvmType)
         error = clEnqueueSVMUnmap(mCommands, mHostBuf, 0, 0, 0);
       mHostMapped = false;
+      mMapFlags = eMemFlags::NONE;
     }
     return error;
   }
@@ -238,41 +243,43 @@ private:
     const size_t origin[3] = { 0, 0, 0 };
     cl_int error = CL_SUCCESS;
 
-    if (isImageParam && !mImageMem) {
-      // create new image object based on global work items as image dimensions
-      std::vector<size_t> imageDims;
-      for (size_t i = 0; i < runParams->numDims(); ++i)
-        imageDims.push_back(runParams->globalWorkItems()[i]);
-
-      cl_image_format clImageFormat;
-      memset(&clImageFormat, 0, sizeof(clImageFormat));
-      clImageFormat.image_channel_order = CL_RGBA;
-      clImageFormat.image_channel_data_type = CL_FLOAT;
-
-      cl_image_desc clImageDesc;
-      memset(&clImageDesc, 0, sizeof(clImageDesc));
-      clImageDesc.image_type = imageDims.size() > 2 ? CL_MEM_OBJECT_IMAGE3D : CL_MEM_OBJECT_IMAGE2D;
-      clImageDesc.image_width = imageDims[0];
-      clImageDesc.image_height = imageDims.size() > 1 ? imageDims[1] : 0;
-      clImageDesc.image_depth = imageDims.size() > 2 ? imageDims[2] : 0;
-      if (mDevInfo->oclVer >= clVersion(2,0))
-        clImageDesc.mem_object = mPinnedMem;
-
-      mImageMem = clCreateImage(mContext, CL_MEM_READ_WRITE, &clImageFormat, &clImageDesc, nullptr, &error);
-      PASS_CL_ERROR;
-
-      kernelMem = mImageMem;
+    if (isImageParam) {
       mImageAccessAttribute = access;
-      if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
-        // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
-        // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
-        size_t region[3] = { 1, 1, 1 };
-        for (size_t i = 0; i < imageDims.size(); ++i)
-          region[i] = imageDims[i];
-        error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+      if (!mImageMem) {
+        // create new image object based on global work items as image dimensions
+        std::vector<size_t> imageDims;
+        for (size_t i = 0; i < runParams->numDims(); ++i)
+          imageDims.push_back(runParams->globalWorkItems()[i]);
+
+        cl_image_format clImageFormat;
+        memset(&clImageFormat, 0, sizeof(clImageFormat));
+        clImageFormat.image_channel_order = CL_RGBA;
+        clImageFormat.image_channel_data_type = CL_FLOAT;
+
+        cl_image_desc clImageDesc;
+        memset(&clImageDesc, 0, sizeof(clImageDesc));
+        clImageDesc.image_type = imageDims.size() > 2 ? CL_MEM_OBJECT_IMAGE3D : CL_MEM_OBJECT_IMAGE2D;
+        clImageDesc.image_width = imageDims[0];
+        clImageDesc.image_height = imageDims.size() > 1 ? imageDims[1] : 1;
+        clImageDesc.image_depth = imageDims.size() > 2 ? imageDims[2] : 1;
+        if (mDevInfo->oclVer >= clVersion(2,0))
+          clImageDesc.mem_object = mPinnedMem;
+
+        mImageMem = clCreateImage(mContext, CL_MEM_READ_WRITE, &clImageFormat, &clImageDesc, nullptr, &error);
         PASS_CL_ERROR;
+
+        kernelMem = mImageMem;
+        if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
+          // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
+          // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
+          size_t region[3] = { 1, 1, 1 };
+          for (size_t i = 0; i < imageDims.size(); ++i)
+            region[i] = imageDims[i];
+          error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+          PASS_CL_ERROR;
+        }
       }
-    } else if (!isImageParam && mImageMem) {
+    } else if (mImageMem) {
       if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::READONLY != mImageAccessAttribute)) {
         // don't copy back to buffer if this had a read-only argument attribute - the buffer is already up-to-date
         error = copyImageToBuffer();

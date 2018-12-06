@@ -26,22 +26,32 @@ const kernel = `__kernel void square(
 }`;
 
 async function noden() {
-  let program = await addon.createProgram(kernel);
+  const platformIndex = 0;
+  const deviceIndex = 0;
+  const context = new addon.clContext({
+    platformIndex: platformIndex, 
+    deviceIndex: deviceIndex
+  });
+
+  let program = await context.createProgram(kernel, {globalWorkItems: +process.argv[2]});
   let [i, o] = await Promise.all([
-    program.createBuffer(+process.argv[2], process.argv[3]),
-    program.createBuffer(+process.argv[2], process.argv[3])
+    context.createBuffer(+process.argv[2], 'readwrite', process.argv[3]),
+    context.createBuffer(+process.argv[2], 'readwrite', process.argv[3])
   ]);
   i.fill(42);
   console.log(i);
   for ( let x = 0 ; x < 1000 ; x++ ) {
-    let timings = await program.run(i, o);
+    let timings = await program.run({ input: i, output: o });
     console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
     [o, i] = [i, o];
   }
   console.log(o);
   return [i, o];
 }
-noden().then(([i, o]) => { console.log(i.creationTime, o.creationTime); }, console.error);
+
+noden()
+  .then(([i, o]) => { console.log(i.creationTime, o.creationTime); })
+  .catch(console.error);
 
 /* let b = Buffer.alloc(65536*100);
 b.fill(42);
