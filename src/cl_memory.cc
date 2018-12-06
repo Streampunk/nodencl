@@ -66,16 +66,17 @@ public:
 
   bool allocate() {
     cl_int error = CL_SUCCESS;
-    cl_svm_mem_flags clMemFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
-                                  (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
-                                  CL_MEM_READ_WRITE;
+    cl_mem_flags clMemFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
+                              (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
+                              CL_MEM_READ_WRITE;
+    cl_svm_mem_flags clSvmMemFlags = clMemFlags;
     if (eSvmType::FINE == mSvmType)
-      clMemFlags |= CL_MEM_SVM_FINE_GRAIN_BUFFER;
+      clSvmMemFlags |= CL_MEM_SVM_FINE_GRAIN_BUFFER;
 
     switch (mSvmType) {
     case eSvmType::FINE:
     case eSvmType::COARSE:
-      mHostBuf = clSVMAlloc(mContext, clMemFlags, mNumBytes, 0);
+      mHostBuf = clSVMAlloc(mContext, clSvmMemFlags, mNumBytes, 0);
       mPinnedMem = clCreateBuffer(mContext, clMemFlags | CL_MEM_USE_HOST_PTR, mNumBytes, mHostBuf, &error);
       break;
     case eSvmType::NONE:

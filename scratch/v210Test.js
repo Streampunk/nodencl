@@ -20,12 +20,12 @@ const SegfaultHandler = require('segfault-handler');
 SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
 
 function dumpFloatBuf(buf, width, numPixels, numLines) {
-  r = o => buf.readFloatLE(o).toFixed(4);
+  r = (b, o) => b.readFloatLE(o).toFixed(4);
   for (let y=0; y<numLines; ++y) {
     const off = y*width*4*4;
-    let s = `Line ${y}: ${r(off)}`;
+    let s = `Line ${y}: ${r(buf, off)}`;
     for (let i=1; i<numPixels*4; ++i)
-      s += `, ${r(off+i*4)}`;
+      s += `, ${r(buf, off+i*4)}`;
     console.log(s);
   }
 }
