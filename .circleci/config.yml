@@ -23,7 +23,7 @@ jobs:
     - run: 
         name: Install OpenCL driver
         command: |
-          apt-get update -yqq && apt-get install -yqq lsb-core
+          sudo apt-get update -yqq && apt-get install -yqq lsb-core
           wget -q ${OPENCL_URL}/{OPENCL_NAME} -O /tmp/opencl_runtime.tgz
           tar -xzf /tmp/opencl_runtime.tgz -C /tmp
           sed 's/decline/accept/g' -i /tmp/${OPENCL_NAME}/silent.cfg
