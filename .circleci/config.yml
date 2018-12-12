@@ -21,9 +21,11 @@ jobs:
         # Any branch if there are none on the default branch - this should be unnecessary if you have your default branch configured correctly
         - v1-dep-
     - run: 
+        name: Install OpenCL driver dependencies
+        command: sudo apt-get update && sudo apt-get install -y lsb-core
+    - run: 
         name: Install OpenCL driver
         command: |
-          sudo apt-get update -yqq && apt-get install -yqq lsb-core
           wget -q ${OPENCL_URL}/{OPENCL_NAME} -O /tmp/opencl_runtime.tgz
           tar -xzf /tmp/opencl_runtime.tgz -C /tmp
           sed 's/decline/accept/g' -i /tmp/${OPENCL_NAME}/silent.cfg
