@@ -16,7 +16,7 @@
 const addon = require('bindings')('nodencl');
 
 const SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
+SegfaultHandler.registerHandler('crash.log'); // With no argument, SegfaultHandler will generate a generic log file name
 
 function getPlatformInfo() {
   return addon.getPlatformInfo();
@@ -68,7 +68,7 @@ clContext.prototype.checkAlloc = async function(cb) {
     result = await cb();
   } catch (err) {
     if (-4 == err.code) { // memory allocation failure
-      this.logger.warn("Failed to allocate OpenCL memory - freeing unreserved allocations");
+      this.logger.warn('Failed to allocate OpenCL memory - freeing unreserved allocations');
       this.buffers = this.buffers.filter(el => {
         if (!el.reserved) el.freeAllocation();
         return el.reserved === true;
