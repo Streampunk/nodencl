@@ -4,7 +4,7 @@
   "description": "Experimental library for executing Open-CL kernels over Node.JS buffers.",
   "main": "index.js",
   "scripts": {
-    "lint": "eslint index.js **/*.js",
+    "lint": "eslint **/*.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Streampunk Media <furnace@streampunk.media> (http://www.streampunk.media)",

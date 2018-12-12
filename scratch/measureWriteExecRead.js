@@ -14,8 +14,6 @@
 */
 
 const addon = require('../index.js');
-const SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
 
 const kernel = `__kernel void square(
     __global unsigned char* input,

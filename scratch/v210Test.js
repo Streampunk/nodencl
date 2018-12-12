@@ -16,11 +16,8 @@
 const addon = require('../index.js');
 const v210_io = require('./v210_io.js');
 
-const SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
-
 function dumpFloatBuf(buf, width, numPixels, numLines) {
-  r = (b, o) => b.readFloatLE(o).toFixed(4);
+  const r = (b, o) => b.readFloatLE(o).toFixed(4);
   for (let y=0; y<numLines; ++y) {
     const off = y*width*4*4;
     let s = `Line ${y}: ${r(buf, off)}`;

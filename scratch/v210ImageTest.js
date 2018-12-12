@@ -35,7 +35,7 @@ __kernel void
 
 function dumpFloatBuf(buf, width, numPixels, numLines) {
   let lineOff = 0;
-  r = o => buf.readFloatLE(lineOff + o).toFixed(4);
+  const r = o => buf.readFloatLE(lineOff + o).toFixed(4);
   for (let y=0; y<numLines; ++y) {
     lineOff = y*width*4*4;
     let s = `Line ${y}: ${r(0)}`;

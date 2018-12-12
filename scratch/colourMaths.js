@@ -129,7 +129,7 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Ub = 1.0 - kB;
   const Vb = 0.0;
 
-  const colMatrix = [...new Array(3)].map(e => new Float32Array(3));
+  const colMatrix = [...new Array(3)].map(() => new Float32Array(3));
   colMatrix[0] = Float32Array.from([Yr, Ur, Vr]);
   colMatrix[1] = Float32Array.from([Yg, Ug, Vg]);
   colMatrix[2] = Float32Array.from([Yb, Ub, Vb]);
@@ -149,7 +149,7 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Vv = 1.0 / chrRange / 2;
   const Ov = - chrNull / chrRange / 2;
 
-  const scaleMatrix = [...new Array(3)].map(e => new Float32Array(4));
+  const scaleMatrix = [...new Array(3)].map(() => new Float32Array(4));
   scaleMatrix[0] = Float32Array.from([Yy, Uy, Vy, Oy]);
   scaleMatrix[1] = Float32Array.from([Yu, Uu, Vu, Ou]);
   scaleMatrix[2] = Float32Array.from([Yv, Uv, Vv, Ov]);
@@ -181,7 +181,7 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Uv = 0.0;
   const Vv = chrRange * 2.0;
 
-  const scaleMatrix = [...new Array(3)].map(e => new Float32Array(3));
+  const scaleMatrix = [...new Array(3)].map(() => new Float32Array(3));
   scaleMatrix[0] = Float32Array.from([Yy, Uy, Vy]);
   scaleMatrix[1] = Float32Array.from([Yu, Uu, Vu]);
   scaleMatrix[2] = Float32Array.from([Yv, Uv, Vv]);
@@ -201,7 +201,7 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Bv = - kB / (1.0 - kR);
   const Ov = chrNull / chrRange / 2.0;
 
-  const colMatrix = [...new Array(3)].map(e => new Float32Array(4));
+  const colMatrix = [...new Array(3)].map(() => new Float32Array(4));
   colMatrix[0] = Float32Array.from([Ry, Gy, By, Oy]);
   colMatrix[1] = Float32Array.from([Ru, Gu, Bu, Ou]);
   colMatrix[2] = Float32Array.from([Rv, Gv, Bv, Ov]);
@@ -218,13 +218,13 @@ function rgb2xyzMatrix(colSpec) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
-  const w = [...new Array(3)].map(e => new Float32Array(1));
+  const w = [...new Array(3)].map(() => new Float32Array(1));
   w[0] = Float32Array.from([colParams[colSpec].wx]);
   w[1] = Float32Array.from([colParams[colSpec].wy]);
   w[2] = Float32Array.from([1.0 - colParams[colSpec].wx - colParams[colSpec].wy]);
   const W = scalarMultiply(w, 1.0 / w[1][0]);
 
-  const xyz = [...new Array(3)].map(e => new Float32Array(3));
+  const xyz = [...new Array(3)].map(() => new Float32Array(3));
   xyz[0] = Float32Array.from([colParams[colSpec].rx, colParams[colSpec].gx, colParams[colSpec].bx]);
   xyz[1] = Float32Array.from([colParams[colSpec].ry, colParams[colSpec].gy, colParams[colSpec].by]);
   xyz[2] = Float32Array.from([
@@ -233,7 +233,7 @@ function rgb2xyzMatrix(colSpec) {
     1.0 - colParams[colSpec].bx - colParams[colSpec].by
   ]);
   const xyzScaleFactors = matrixMultiply(matrixInvert3x3(xyz), W);
-  const xyzScale = [...new Array(3)].map(e => new Float32Array(3));
+  const xyzScale = [...new Array(3)].map(() => new Float32Array(3));
   xyzScale[0][0] = xyzScaleFactors[0][0];
   xyzScale[1][1] = xyzScaleFactors[1][0];
   xyzScale[2][2] = xyzScaleFactors[2][0];
@@ -250,7 +250,7 @@ function xyz2rgbMatrix(colSpec) {
 }
 
 function scalarMultiply (a, c) {
-  let result = [...new Float32Array(a.length)].map(e => new Float32Array(a[0].length));
+  let result = [...new Float32Array(a.length)].map(() => new Float32Array(a[0].length));
   return result.map((row, i) => {
     return row.map((val, j) => {
       return a[i][j] * c;
@@ -259,7 +259,7 @@ function scalarMultiply (a, c) {
 }
 
 function matrixMultiply (a, b) {
-  let result = [...new Float32Array(a.length)].map(e => new Float32Array(b[0].length));
+  let result = [...new Float32Array(a.length)].map(() => new Float32Array(b[0].length));
   return result.map((row, i) => {
     return row.map((val, j) => {
       return a[i].reduce((sum, elm, k) => sum + (elm*b[k][j]), 0.0);
@@ -268,25 +268,25 @@ function matrixMultiply (a, b) {
 }
 
 function matrixTranspose(a) {
-  return Object.keys(a[0]).map(function(c) {
-      return a.map(function(r) { return r[c]; });
-  });
+  return Object.keys(a[0]).map(c => 
+    a.map(r => r[c])
+  );
 }
 
 function matrixDeterminant2x2(a) {
   if ((a.length != a[0].length) || (2 !== a.length))
-    throw ("matrixDeterminant2x2 requires a 2 x 2 matrix");
+    throw ('matrixDeterminant2x2 requires a 2 x 2 matrix');
   return a[0][0] * a[1][1] - a[0][1] * a[1][0];
 }
 
 function matrixOfMinors3x3(a) {
   if ((a.length != a[0].length) || (3 !== a.length))
-    throw ("matrixOfMinors3x3 requires a 3 x 3 matrix");
+    throw ('matrixOfMinors3x3 requires a 3 x 3 matrix');
 
-  let result = [...new Float32Array(a.length)].map(e => new Float32Array(a.length));
+  let result = [...new Float32Array(a.length)].map(()=> new Float32Array(a.length));
   return result.map((row, i) => {
     return row.map((val, j) => {
-      let minor = [...new Float32Array(a.length-1)].map(e => new Float32Array(a.length-1));
+      let minor = [...new Float32Array(a.length-1)].map(() => new Float32Array(a.length-1));
       const y = (1==i)?[i-1, i+1]:[(i+1)%3, (i+2)%3];
       const x = (1==j)?[j-1, j+1]:[(j+1)%3, (j+2)%3];
       minor.forEach((arr, r) => arr.forEach((val, c) => minor[r][c] = a[y[r]][x[c]]));
@@ -296,9 +296,9 @@ function matrixOfMinors3x3(a) {
 }
 function matrixOfCofactors3x3(a) {
   if ((a.length != a[0].length) || (3 !== a.length))
-    throw ("matrixOfCofactors3x3 requires a 3 x 3 matrix");
+    throw ('matrixOfCofactors3x3 requires a 3 x 3 matrix');
 
-  let result = [...new Float32Array(a.length)].map(e => new Float32Array(a.length));
+  let result = [...new Float32Array(a.length)].map(() => new Float32Array(a.length));
   return result.map((row, i) => {
     return row.map((val, j) => {
       return a[i][j] * Math.pow(-1, i+j);
@@ -308,7 +308,7 @@ function matrixOfCofactors3x3(a) {
 
 function matrixInvert3x3(a) {
   if ((a.length != a[0].length) || (3 !== a.length))
-    throw ("matrixInvert3x3 requires a 3 x 3 matrix");
+    throw ('matrixInvert3x3 requires a 3 x 3 matrix');
   const minors = matrixOfMinors3x3(a);
   const cofactors = matrixOfCofactors3x3(minors);
   const adjugate = matrixTranspose(cofactors);

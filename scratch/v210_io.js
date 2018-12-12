@@ -230,7 +230,7 @@ function fillBuf(buf, width, height) {
 
 function dumpBuf(buf, width, numLines) {
   let lineOff = 0;
-  function getHex(off) { return buf.readUInt32LE(lineOff + off).toString(16) }
+  function getHex(off) { return buf.readUInt32LE(lineOff + off).toString(16); }
 
   const pitch = getPitchBytes(width);
   for (let l = 0; l < numLines; ++l) {
@@ -268,7 +268,7 @@ reader.prototype.init = async function() {
   await this.colMatrix.hostAccess('writeonly');
   Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
+  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
   await this.gammaLut.hostAccess('writeonly');
   Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
 
@@ -281,12 +281,13 @@ reader.prototype.init = async function() {
     globalWorkItems: this.globalWorkItems,
     workItemsPerGroup: this.workItemsPerGroup
   });
-}
+};
 
 reader.prototype.fromV210 = async function(src, dst) {
-  return await this.v210ReadProgram.run({input: src, output: dst, width: this.width, colMatrix: this.colMatrix, 
-                                         gammaLut: this.gammaLut, gamutMatrix: this.gamutMatrix});
-}
+  return await this.v210ReadProgram.run(
+    { input: src, output: dst, width: this.width, colMatrix: this.colMatrix, 
+      gammaLut: this.gammaLut, gamutMatrix: this.gamutMatrix });
+};
 
 function writer(context, width, height, colSpec) {
   this.context = context;
@@ -313,7 +314,7 @@ writer.prototype.init = async function() {
   await this.colMatrix.hostAccess('writeonly');
   Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
+  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
   await this.gammaLut.hostAccess('writeonly');
   Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
 
@@ -322,12 +323,13 @@ writer.prototype.init = async function() {
     globalWorkItems: this.globalWorkItems,
     workItemsPerGroup: this.workItemsPerGroup
   });
-}
+};
 
 writer.prototype.toV210 = async function(src, dst) {
-  return await this.v210WriteProgram.run({input: src, output: dst, width: this.width, colMatrix: this.colMatrix, 
-                                          gammaLut: this.gammaLut});
-}
+  return await this.v210WriteProgram.run(
+    { input: src, output: dst, width: this.width, colMatrix: this.colMatrix, 
+      gammaLut: this.gammaLut });
+};
 
 module.exports = {
   reader: reader,

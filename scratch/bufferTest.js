@@ -14,8 +14,6 @@
 */
 
 const addon = require('../index.js');
-const SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler("crash.log"); // With no argument, SegfaultHandler will generate a generic log file name
 
 const colParams = {
   '601-625': { // https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.601-7-201103-I!!PDF-E.pdf
@@ -64,7 +62,7 @@ const colParams = {
   }
 };
 
-function gammaToLinearLUT(lut, colSpace, numBits) {
+function gammaToLinearLUT(lut, colSpace) {
   if (!colParams.hasOwnProperty(colSpace)) {
     console.error(`Unrecognised colourspace ${colSpace} - defaulting to BT.709`);
     colSpace = '709';
@@ -87,7 +85,7 @@ function gammaToLinearLUT(lut, colSpace, numBits) {
   Buffer.from(lutArr.buffer).copy(lut);
 }
 
-function linearToGammaLUT(lut, colSpace, numBits) {
+function linearToGammaLUT(lut, colSpace) {
   if (!colParams.hasOwnProperty(colSpace)) {
     console.error(`Unrecognised colourspace ${colSpace} - defaulting to BT.709`);
     colSpace = '709';
@@ -167,17 +165,17 @@ function rgb2ycbcrMatrix(matrix, colSpace, numBits) {
   const Ry = kR * kLumaRange;
   const Gy = kG * kLumaRange;
   const By = kB * kLumaRange;
-  const Oy = kLumaBlack
+  const Oy = kLumaBlack;
 
   const Ru = - kR / (1 - kB) / 2 * kChrRange;
   const Gu = - kG / (1 - kB) / 2 * kChrRange;
   const Bu = (1 - kB) / (1 - kB) / 2 * kChrRange;
-  const Ou = kChromaNull
+  const Ou = kChromaNull;
 
   const Rv = (1 - kR) / (1 - kR) / 2 * kChrRange;
   const Gv = - kG / (1 - kR) / 2 * kChrRange;
   const Bv = - kB / (1 - kR) / 2 * kChrRange;
-  const Ov = kChromaNull
+  const Ov = kChromaNull;
 
   const matrixArray = [
     Ry, Gy, By, Oy,
@@ -389,7 +387,7 @@ function fillV210Buf(buf, width, height) {
 
 function dumpV210Buf(buf, width, numLines) {
   let lineOff = 0;
-  function getHex(off) { return buf.readUInt32LE(lineOff + off).toString(16) }
+  function getHex(off) { return buf.readUInt32LE(lineOff + off).toString(16); }
 
   const pitch = getV210PitchBytes(width);
   for (let l = 0; l < numLines; ++l) {
@@ -460,7 +458,7 @@ async function noden() {
   await m1.hostAccess('writeonly');
   ycbcr2rgbMatrix(m1, '709', 10);
   await g1.hostAccess('writeonly');
-  gammaToLinearLUT(g1, '709', 10);
+  gammaToLinearLUT(g1, '709');
 
   for (let x = 0; x < 10; x++) {
     let timings1 = await readV210program.run({input: i1, output: o1, width: width, matrix: m1, gammaToLinearLUT: g1});
@@ -483,7 +481,7 @@ async function noden() {
   await m2.hostAccess('writeonly');
   rgb2ycbcrMatrix(m2, '709', 10);
   await g2.hostAccess('writeonly');
-  linearToGammaLUT(g2, '709', 10);
+  linearToGammaLUT(g2, '709');
 
   for (let x = 0; x < 10; x++) {
     let timings2 = await writeV210program.run({input: o1, output: o2, width: width, matrix: m2, linearToGammaLUT: g2});
@@ -501,8 +499,8 @@ async function noden() {
   return [i1, o2];
 }
 noden()
-  .then(([i, o]) => { return [i.creationTime, o.creationTime] })
+  .then(([i, o]) => { return [i.creationTime, o.creationTime]; })
   .then(([ict, oct]) => { if (global.gc) global.gc(); console.log(ict, oct); })
   .catch( console.error );
-  // .then(([i, o]) => { console.log(i.creationTime, o.creationTime); return }, console.error)
-  // .then(() => { if (global.gc()) global.gc(); });
+// .then(([i, o]) => { console.log(i.creationTime, o.creationTime); return }, console.error)
+// .then(() => { if (global.gc()) global.gc(); });
