@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "lint": "eslint **/*.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tape test/*Spec.js"
   },
   "author": "Streampunk Media <furnace@streampunk.media> (http://www.streampunk.media)",
   "license": "Apache-2.0",
