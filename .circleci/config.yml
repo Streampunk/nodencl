@@ -8,7 +8,7 @@ jobs:
       CIRCLE_ARTIFACTS: /tmp/circleci-artifacts
       CIRCLE_TEST_REPORTS: /tmp/circleci-test-results
     docker:
-    - image: streampunkmedia/testopencl:16-10-8.1
+    - image: streampunkmedia/testopencl:10-8.1
     steps:
     - checkout
     - run: mkdir -p $CIRCLE_ARTIFACTS $CIRCLE_TEST_REPORTS
@@ -21,7 +21,7 @@ jobs:
         # Any branch if there are none on the default branch - this should be unnecessary if you have your default branch configured correctly
         - v1-dep-
     - run: npm install tap-xunit
-    - run: npm install --unsafe-perm
+    - run: npm install
     - save_cache:
         key: v1-dep-{{ .Branch }}-{{ epoch }}
         paths:
