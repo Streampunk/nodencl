@@ -16,7 +16,7 @@
                 "C:/Program Files (x86)/Windows Kits/8.1/Include/winrt",
                 "${workspaceFolder}",
                 "${workspaceFolder}/include",
-                "C:/Users/simon/.node-gyp/10.13.0/include/node"
+                "C:/Users/simon/.node-gyp/10.14.1/include/node"
             ],
             "defines": [
                 "_DEBUG",

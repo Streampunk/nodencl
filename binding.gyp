@@ -12,7 +12,7 @@
         "src/noden_run.cc",
         "src/cl_memory.cc"
       ],
-      "include_dirs": [ "OpenCL/include" ],
+      "include_dirs": [ "include" ],
       "conditions": [
         ["OS=='linux'", {
           "cflags_cc": [
@@ -30,7 +30,7 @@
         ["OS=='win'", {
           "link_settings": {
             "libraries": [ "OpenCL.lib" ],
-            "library_dirs": [ "OpenCL/lib/x64" ]
+            "library_dirs": [ "lib/x64" ]
           }
         }],
       ],

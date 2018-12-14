@@ -22,11 +22,12 @@ function getPlatformInfo() {
   return addon.getPlatformInfo();
 }
 
-async function createContext(platformIndex, deviceIndex) {
-  return await addon.createContext({
-    platformIndex: platformIndex, 
-    deviceIndex: deviceIndex
-  });
+async function createContext(params) {
+  return (0 === Object.keys(params).length) ? await addon.createContext() :
+    await addon.createContext({
+      platformIndex: params.platformIndex, 
+      deviceIndex: params.deviceIndex
+    });
 }
 
 function addReference(buffer, buffers) {
@@ -48,18 +49,19 @@ function releaseReference(buffer) {
 }
 
 function clContext(params, logger) {
-  this.platformIndex = params ? params.platformIndex || 0 : 0;
-  this.deviceIndex = params ? params.deviceIndex || 0 : 0;
   this.logger = logger || { log: console.log, warn: console.warn, error: console.error };
   this.buffers = [];
   this.bufIndex = 0;
 
-  this.getPlatformInfo = () => addon.getPlatformInfo()[this.platformIndex];
+  this.getPlatformInfo = async () => {
+    const c = await this.context;
+    return addon.getPlatformInfo()[c.platformIndex];
+  };
 
   this.logBuffers = () => this.buffers.forEach(el => 
     this.logger.log(`${el.index}: ${el.owner} ${el.length} bytes ${el.reserved?'reserved':'available'}`));
 
-  this.context = createContext(this.platformIndex, this.deviceIndex);
+  this.context = createContext(params);
 }
 
 clContext.prototype.checkAlloc = async function(cb) {
