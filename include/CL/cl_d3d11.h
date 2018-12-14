@@ -76,11 +76,6 @@ typedef cl_uint cl_d3d11_device_set_khr;
 #define CL_COMMAND_ACQUIRE_D3D11_OBJECTS_KHR         0x4020
 #define CL_COMMAND_RELEASE_D3D11_OBJECTS_KHR         0x4021
 
-// object types
-
-#define CL_D3D11_OBJECT_BUFFER                0x3000
-#define CL_D3D11_OBJECT_TEXTURE2D             0x3001
-#define CL_D3D11_OBJECT_TEXTURE3D             0x3003
 /******************************************************************************/
 
 typedef CL_API_ENTRY cl_int (CL_API_CALL *clGetDeviceIDsFromD3D11KHR_fn)(

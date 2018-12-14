@@ -29,13 +29,7 @@
 #ifndef __OPENCL_CL_EGL_H
 #define __OPENCL_CL_EGL_H
 
-#ifdef __APPLE__
-
-#else
 #include <CL/cl.h>
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-#endif  
 
 #ifdef __cplusplus
 extern "C" {

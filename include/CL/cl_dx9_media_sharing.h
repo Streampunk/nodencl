@@ -94,7 +94,7 @@ typedef CL_API_ENTRY cl_int (CL_API_CALL *clGetDeviceIDsFromDX9MediaAdapterKHR_f
     cl_platform_id                   platform,
     cl_uint                          num_media_adapters,
     cl_dx9_media_adapter_type_khr *  media_adapter_type,
-    void *                           media_adapters[],
+    void *                           media_adapters,
     cl_dx9_media_adapter_set_khr     media_adapter_set,
     cl_uint                          num_entries,
     cl_device_id *                   devices,

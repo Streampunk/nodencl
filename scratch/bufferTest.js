@@ -414,9 +414,13 @@ function diff32(buf1, buf2, width, height) {
 }
 
 async function noden() {
-  const platformIndex = 1;
+  const platformIndex = 0;
   const deviceIndex = 0;
-  const platformInfo = addon.getPlatformInfo()[platformIndex];
+  const context = new addon.clContext({
+    platformIndex: platformIndex, 
+    deviceIndex: deviceIndex
+  });
+  const platformInfo = context.getPlatformInfo();
   // console.log(JSON.stringify(platformInfo, null, 2));
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
@@ -428,11 +432,6 @@ async function noden() {
   // process one image line per work group, 48 pixels per work item
   const workItemsPerGroup = (width + 47 - ((width - 1) % 48)) / 48;
   const globalWorkItems = workItemsPerGroup * height;
-
-  const context = await addon.createContext({
-    platformIndex: platformIndex, 
-    deviceIndex: deviceIndex
-  });
 
   const readV210program = await context.createProgram(readV210, {
     globalWorkItems: globalWorkItems,
