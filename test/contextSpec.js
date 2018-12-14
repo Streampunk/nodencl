@@ -50,7 +50,7 @@ platformInfo.forEach((platform, pi) => {
 
 createContext('Create OpenCL context with no parameters', {}, (err, t, context) => {
   if (err)
-    t.ok(`no parameters produces ${err}`);
+    t.pass(`no parameters produces ${err}`);
   else {
     t.ok(context.hasOwnProperty('createProgram'), 'has createProgram function');
     t.ok(context.hasOwnProperty('createBuffer'), 'has createBuffer function');
