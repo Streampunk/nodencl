@@ -18,10 +18,9 @@ const tape = require('tape');
 
 const testBuffer = `
   __kernel void test(__global uint4* restrict input,
-                     __global uint4* restrict output,
-                     __private unsigned int width) {
-    uint off = (get_group_id(0) * get_local_size(0) + get_local_id(0)) * 16;
-    for (uint i=0; i<16; ++i) {
+                     __global uint4* restrict output) {
+    uint off = (get_group_id(0) * get_local_size(0) + get_local_id(0)) * 4;
+    for (uint i=0; i<4; ++i) {
       output[off] = input[off];
       off++;
     }
@@ -61,8 +60,8 @@ function createContext(description, properties, cb) {
 const pi = 0;
 const di = 0;
 createContext('Create program with buffer parameters', { platformIndex: pi, deviceIndex: di }, async (t, clContext) => {
-  const globalWorkItems = 1024;
   const workItemsPerGroup = 64;
+  const globalWorkItems = 4096;
   const testProgram = await clContext.createProgram(testBuffer, {
     name: 'test',
     globalWorkItems: globalWorkItems,
@@ -73,8 +72,8 @@ createContext('Create program with buffer parameters', { platformIndex: pi, devi
 });
 
 createContext('Create program with no kernel name parameter', { platformIndex: pi, deviceIndex: di }, async (t, clContext) => {
-  const globalWorkItems = 1024;
   const workItemsPerGroup = 64;
+  const globalWorkItems = 4096;
   const testProgram = await clContext.createProgram(testBuffer, {
     globalWorkItems: globalWorkItems,
     workItemsPerGroup: workItemsPerGroup

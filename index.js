@@ -83,6 +83,7 @@ clContext.prototype.checkAlloc = async function(cb) {
 };
 
 clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, owner) {
+  if (!bufType) bufType = 'none';
   const buf = this.buffers.find(el => 
     !el.reserved && (el.length === numBytes) && (el.bufDir === bufDir) && (el.bufType === bufType));
   if (buf) {
