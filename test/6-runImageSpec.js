@@ -64,7 +64,6 @@ createContext('Run OpenCL program with image parameters', async (t, clContext) =
   const srcBuf = Buffer.alloc(numBytes);
   for (let i=0; i<numBytes; i+=4)
     srcBuf.writeFloatLE(i/numBytes, i);
-  console.log(srcBuf);
 
   const bufIn = await clContext.createBuffer(numBytes, 'readwrite', 'none');
   await bufIn.hostAccess('writeonly', srcBuf);
