@@ -33,12 +33,20 @@ function createContext(description, cb) {
 }
 
 const numBytes = 65536;
-createContext('Create OpenCL buffer', async (t, clContext) => {
-  const testBuffer = await clContext.createBuffer(numBytes, 'readwrite', 'none');
-  t.ok(Buffer.isBuffer(testBuffer), 'buffer created ok');
-  t.equal(testBuffer.numBytes, numBytes, 'buffer has correct size');
-  t.ok(testBuffer.hasOwnProperty('hostAccess'), 'has hostAccess function');
-});
+const bufDirs = [ 'readonly', 'writeonly', 'readwrite' ];
+const svmTypes = [ 'none', 'coarse', 'fine' ];
+for (let d=0; d<bufDirs.length; ++d) {
+  for (let t=0; t<svmTypes.length; ++t) {
+    const dir = bufDirs[d];
+    const svm = svmTypes[t];
+    createContext(`Create OpenCL buffer direction ${dir} SVM type ${svm}`, async (t, clContext) => {
+      const testBuffer = await clContext.createBuffer(numBytes, dir, svm);
+      t.ok(Buffer.isBuffer(testBuffer), 'buffer created ok');
+      t.equal(testBuffer.numBytes, numBytes, 'buffer has correct size');
+      t.ok(testBuffer.hasOwnProperty('hostAccess'), 'has hostAccess function');
+    });
+  }
+}
 
 createContext('Create buffer with negative size', async (t, clContext) => {
   try {

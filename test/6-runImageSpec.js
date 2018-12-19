@@ -59,17 +59,25 @@ const createProgram = function(clContext, kernel) {
   });
 };
 
-createContext('Run OpenCL program with image parameters', async (t, clContext) => {
-  const testProgram = await createProgram(clContext, testKernel);
-  const srcBuf = Buffer.alloc(numBytes);
-  for (let i=0; i<numBytes; i+=4)
-    srcBuf.writeFloatLE(i/numBytes, i);
+const bufDirs = [ ['readonly', 'writeonly'], ['readonly', 'readwrite'], ['readwrite', 'writeonly'], ['readwrite', 'readwrite'] ];
+const svmTypes = [ 'none', 'coarse', 'fine' ];
+for (let d=0; d<bufDirs.length; ++d) {
+  for (let t=0; t<svmTypes.length; ++t) {
+    const dirs = bufDirs[d];
+    const svm = svmTypes[t];
+    createContext(`Run OpenCL program with image parameters, ${dirs[0]}->${dirs[1]}, SVM type ${svm}`, async (t, clContext) => {
+      const testProgram = await createProgram(clContext, testKernel);
+      const srcBuf = Buffer.alloc(numBytes);
+      for (let i=0; i<numBytes; i+=4)
+        srcBuf.writeFloatLE(i/numBytes, i);
 
-  const bufIn = await clContext.createBuffer(numBytes, 'readwrite', 'coarse');
-  await bufIn.hostAccess('writeonly', srcBuf);
-  const bufOut = await clContext.createBuffer(numBytes, 'readwrite', 'coarse');
+      const bufIn = await clContext.createBuffer(numBytes, dirs[0], svm);
+      await bufIn.hostAccess('writeonly', srcBuf);
+      const bufOut = await clContext.createBuffer(numBytes, dirs[1], svm);
 
-  await testProgram.run({ input: bufIn, output: bufOut });
-  await bufOut.hostAccess('readonly');
-  t.deepEqual(bufOut, bufIn, 'program produced expected result');
-});
+      await testProgram.run({ input: bufIn, output: bufOut });
+      await bufOut.hostAccess('readonly');
+      t.deepEqual(bufOut, bufIn, 'program produced expected result');
+    });
+  }
+}
