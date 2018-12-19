@@ -49,7 +49,7 @@ __kernel void
   }
 `;
 
-const width = 64;
+const width = 1024;
 const height = 64;
 const numBytes = width * height * 4 * 4; // rgba-f32
 const createProgram = function(clContext, kernel) {
@@ -65,9 +65,9 @@ createContext('Run OpenCL program with image parameters', async (t, clContext) =
   for (let i=0; i<numBytes; i+=4)
     srcBuf.writeFloatLE(i/numBytes, i);
 
-  const bufIn = await clContext.createBuffer(numBytes, 'readwrite', 'none');
+  const bufIn = await clContext.createBuffer(numBytes, 'readwrite', 'coarse');
   await bufIn.hostAccess('writeonly', srcBuf);
-  const bufOut = await clContext.createBuffer(numBytes, 'readwrite', 'none');
+  const bufOut = await clContext.createBuffer(numBytes, 'readwrite', 'coarse');
 
   await testProgram.run({ input: bufIn, output: bufOut });
   await bufOut.hostAccess('readonly');
