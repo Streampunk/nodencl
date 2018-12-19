@@ -112,7 +112,10 @@ public:
       return;
     }
 
-    if (!(mHostMapped && (haFlags == mMapFlags))) {
+    if (mHostMapped && (haFlags != mMapFlags))
+      unmapMem(); // must unmap if host access flags don't match
+
+    if (!mHostMapped) {
       cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
                               (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
                               CL_MAP_READ;
@@ -266,7 +269,10 @@ private:
         if (mDevInfo->oclVer >= clVersion(2,0))
           clImageDesc.mem_object = mPinnedMem;
 
-        mImageMem = clCreateImage(mContext, CL_MEM_READ_WRITE, &clImageFormat, &clImageDesc, nullptr, &error);
+        cl_mem_flags clMemFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
+                                  (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
+                                  CL_MEM_READ_WRITE;
+        mImageMem = clCreateImage(mContext, clMemFlags, &clImageFormat, &clImageDesc, nullptr, &error);
         PASS_CL_ERROR;
 
         kernelMem = mImageMem;
