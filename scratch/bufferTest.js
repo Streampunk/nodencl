@@ -63,7 +63,7 @@ const colParams = {
 };
 
 function gammaToLinearLUT(lut, colSpace) {
-  if (!colParams.hasOwnProperty(colSpace)) {
+  if (!Object.prototype.hasOwnProperty(colParams, colSpace)) {
     console.error(`Unrecognised colourspace ${colSpace} - defaulting to BT.709`);
     colSpace = '709';
   }
@@ -86,7 +86,7 @@ function gammaToLinearLUT(lut, colSpace) {
 }
 
 function linearToGammaLUT(lut, colSpace) {
-  if (!colParams.hasOwnProperty(colSpace)) {
+  if (!Object.prototype.hasOwnProperty(colParams, colSpace)) {
     console.error(`Unrecognised colourspace ${colSpace} - defaulting to BT.709`);
     colSpace = '709';
   }
@@ -108,7 +108,7 @@ function linearToGammaLUT(lut, colSpace) {
 }
 
 function ycbcr2rgbMatrix(matrix, colSpace, numBits) {
-  if (!colParams.hasOwnProperty(colSpace)) {
+  if (!Object.prototype.hasOwnProperty(colParams, colSpace)) {
     console.error(`Unrecognised colourspace ${colSpace} - defaulting to BT.709`);
     colSpace = '709';
   }
