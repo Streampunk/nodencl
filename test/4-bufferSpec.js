@@ -43,7 +43,7 @@ for (let d=0; d<bufDirs.length; ++d) {
       const testBuffer = await clContext.createBuffer(numBytes, dir, svm);
       t.ok(Buffer.isBuffer(testBuffer), 'buffer created ok');
       t.equal(testBuffer.numBytes, numBytes, 'buffer has correct size');
-      t.ok(testBuffer.hasOwnProperty('hostAccess'), 'has hostAccess function');
+      t.ok(Object.prototype.hasOwnProperty.call(testBuffer, 'hostAccess'), 'has hostAccess function');
     });
   }
 }

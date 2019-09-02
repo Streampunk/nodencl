@@ -41,8 +41,8 @@ platformInfo.forEach((platform, pi) => {
         t.equal(context.deviceIndex, di, 'context has the expected device index');
         t.equal(device.platformIndex, pi, 'device has the expected platform index');
         t.equal(device.deviceIndex, di, 'device has the expected device index');
-        t.ok(context.hasOwnProperty('createProgram'), 'has createProgram function');
-        t.ok(context.hasOwnProperty('createBuffer'), 'has createBuffer function');
+        t.ok(Object.prototype.hasOwnProperty.call(context, 'createProgram'), 'has createProgram function');
+        t.ok(Object.prototype.hasOwnProperty.call(context, 'createBuffer'), 'has createBuffer function');
       }
     });
   });
@@ -52,8 +52,8 @@ createContext('Create OpenCL context with no parameters', {}, (err, t, context) 
   if (err)
     t.pass(`no parameters produces ${err}`);
   else {
-    t.ok(context.hasOwnProperty('createProgram'), 'has createProgram function');
-    t.ok(context.hasOwnProperty('createBuffer'), 'has createBuffer function');
+    t.ok(Object.prototype.hasOwnProperty.call(context, 'createProgram'), 'has createProgram function');
+    t.ok(Object.prototype.hasOwnProperty.call(context, 'createBuffer'), 'has createBuffer function');
   }
 });
 

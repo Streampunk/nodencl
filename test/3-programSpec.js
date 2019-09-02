@@ -68,7 +68,7 @@ createContext('Create program with buffer parameters', { platformIndex: pi, devi
     workItemsPerGroup: workItemsPerGroup
   });
   t.deepEqual(testBuffer, testProgram.kernelSource, 'has the correct program source');
-  t.ok(testProgram.hasOwnProperty('run'), 'has run function');
+  t.ok(Object.prototype.hasOwnProperty.call(testProgram, 'run'), 'has run function');
 });
 
 createContext('Create program with no kernel name parameter', { platformIndex: pi, deviceIndex: di }, async (t, clContext) => {
@@ -79,7 +79,7 @@ createContext('Create program with no kernel name parameter', { platformIndex: p
     workItemsPerGroup: workItemsPerGroup
   });
   t.deepEqual(testBuffer, testProgram.kernelSource, 'has the correct program source');
-  t.ok(testProgram.hasOwnProperty('run'), 'has run function');
+  t.ok(Object.prototype.hasOwnProperty.call(testProgram, 'run'), 'has run function');
 });
 
 createContext('Create program with no globalWorkItems parameter', { platformIndex: pi, deviceIndex: di }, async (t, clContext) => {
@@ -103,5 +103,5 @@ createContext('Create program with image parameters', { platformIndex: pi, devic
     globalWorkItems: Uint32Array.from([ width, height ])
   });
   t.deepEqual(testImage, testProgram.kernelSource, 'has the correct program source');
-  t.ok(testProgram.hasOwnProperty('run'), 'has run function');
+  t.ok(Object.prototype.hasOwnProperty.call(testProgram, 'run'), 'has run function');
 });

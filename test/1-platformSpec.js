@@ -20,15 +20,15 @@ tape('Get platform info', t => {
   const platformInfo = addon.getPlatformInfo();
   t.ok(Array.isArray(platformInfo), 'platform info is an array');
   platformInfo.forEach((p, pi) => {
-    t.ok(p.hasOwnProperty('profile'), `platform ${pi} has a profile`);
-    t.ok(p.hasOwnProperty('version'), `platform ${pi} has a version`);
-    t.ok(p.hasOwnProperty('name'), `platform ${pi} has a name`);
-    t.ok(p.hasOwnProperty('devices'), `platform ${pi} has devices`);
+    t.ok(Object.prototype.hasOwnProperty.call(p, 'profile'), `platform ${pi} has a profile`);
+    t.ok(Object.prototype.hasOwnProperty.call(p, 'version'), `platform ${pi} has a version`);
+    t.ok(Object.prototype.hasOwnProperty.call(p, 'name'), `platform ${pi} has a name`);
+    t.ok(Object.prototype.hasOwnProperty.call(p, 'devices'), `platform ${pi} has devices`);
     p.devices.forEach((d, di) => {
-      t.ok(d.hasOwnProperty('vendor'), `platform ${pi}, device ${di} has a vendor`);
-      t.ok(d.hasOwnProperty('version'), `platform ${pi}, device ${di} has a version`);
-      t.ok(d.hasOwnProperty('name'), `platform ${pi}, device ${di} has a name`);
-      t.ok(d.hasOwnProperty('type'), `platform ${pi}, device ${di} has a type`);
+      t.ok(Object.prototype.hasOwnProperty.call(d, 'vendor'), `platform ${pi}, device ${di} has a vendor`);
+      t.ok(Object.prototype.hasOwnProperty.call(d, 'version'), `platform ${pi}, device ${di} has a version`);
+      t.ok(Object.prototype.hasOwnProperty.call(d, 'name'), `platform ${pi}, device ${di} has a name`);
+      t.ok(Object.prototype.hasOwnProperty.call(d, 'type'), `platform ${pi}, device ${di} has a type`);
     });
   });
   t.end();
