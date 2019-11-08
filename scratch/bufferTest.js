@@ -420,7 +420,7 @@ async function noden() {
     platformIndex: platformIndex, 
     deviceIndex: deviceIndex
   });
-  const platformInfo = context.getPlatformInfo();
+  const platformInfo = await context.getPlatformInfo();
   // console.log(JSON.stringify(platformInfo, null, 2));
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
