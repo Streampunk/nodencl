@@ -62,7 +62,6 @@ const colParams = {
 
 function gamma2linearLUT(colSpec) {
   if (!(colSpec in colParams)) {
-  // if (!colParams.hasOwnProperty(colSpec)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -86,7 +85,6 @@ function gamma2linearLUT(colSpec) {
 
 function linear2gammaLUT(colSpec) {
   if (!(colSpec in colParams)) {
-  // if (!colParams.hasOwnProperty(colSpec)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -109,7 +107,6 @@ function linear2gammaLUT(colSpec) {
 
 function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   if (!(colSpec in colParams)) {
-  // if (!colParams.hasOwnProperty(colSpec)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -143,14 +140,14 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Oy = - lumaBlack / lumaRange;
 
   const Yu = 0.0;
-  const Uu = 1.0 / chrRange / 2;
+  const Uu = (1.0 / chrRange) * 2;
   const Vu = 0.0;
-  const Ou = - chrNull / chrRange / 2;
+  const Ou = - (chrNull / chrRange) * 2;
 
   const Yv = 0.0;
   const Uv = 0.0;
-  const Vv = 1.0 / chrRange / 2;
-  const Ov = - chrNull / chrRange / 2;
+  const Vv = (1.0 / chrRange) * 2;
+  const Ov = - (chrNull / chrRange) * 2;
 
   const scaleMatrix = [...new Array(3)].map(() => new Float32Array(4));
   scaleMatrix[0] = Float32Array.from([Yy, Uy, Vy, Oy]);
@@ -162,7 +159,6 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
 
 function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   if (!(colSpec in colParams)) {
-  // if (!colParams.hasOwnProperty(colSpec)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -178,12 +174,12 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Vy = 0.0;
 
   const Yu = 0.0;
-  const Uu = chrRange * 2.0;
+  const Uu = chrRange / 2.0;
   const Vu = 0.0;
 
   const Yv = 0.0;
   const Uv = 0.0;
-  const Vv = chrRange * 2.0;
+  const Vv = chrRange / 2.0;
 
   const scaleMatrix = [...new Array(3)].map(() => new Float32Array(3));
   scaleMatrix[0] = Float32Array.from([Yy, Uy, Vy]);
@@ -198,12 +194,12 @@ function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
   const Ru = - kR / (1.0 - kB);
   const Gu = - kG / (1.0 - kB);
   const Bu = (1.0 - kB) / (1.0 - kB);
-  const Ou = chrNull / chrRange / 2.0;
+  const Ou = (chrNull / chrRange) * 2.0;
 
   const Rv = (1.0 - kR) / (1.0 - kR);
   const Gv = - kG / (1.0 - kR);
   const Bv = - kB / (1.0 - kR);
-  const Ov = chrNull / chrRange / 2.0;
+  const Ov = (chrNull / chrRange) * 2.0;
 
   const colMatrix = [...new Array(3)].map(() => new Float32Array(4));
   colMatrix[0] = Float32Array.from([Ry, Gy, By, Oy]);
@@ -219,7 +215,6 @@ function rgb2rgbMatrix(srcColSpec, dstColSpec) {
 
 function rgb2xyzMatrix(colSpec) {
   if (!(colSpec in colParams)) {
-  // if (!colParams.hasOwnProperty(colSpec)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -248,7 +243,6 @@ function rgb2xyzMatrix(colSpec) {
 
 function xyz2rgbMatrix(colSpec) {
   if (!(colSpec in colParams)) {
-  // if (!colParams.hasOwnProperty(colSpec)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
