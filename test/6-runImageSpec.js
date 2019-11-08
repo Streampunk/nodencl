@@ -71,9 +71,9 @@ for (let d=0; d<bufDirs.length; ++d) {
       for (let i=0; i<numBytes; i+=4)
         srcBuf.writeFloatLE(i/numBytes, i);
 
-      const bufIn = await clContext.createBuffer(numBytes, dirs[0], svm);
+      const bufIn = await clContext.createBuffer(numBytes, dirs[0], svm, { width: width, height: height });
       await bufIn.hostAccess('writeonly', srcBuf);
-      const bufOut = await clContext.createBuffer(numBytes, dirs[1], svm);
+      const bufOut = await clContext.createBuffer(numBytes, dirs[1], svm, { width: width, height: height });
 
       await testProgram.run({ input: bufIn, output: bufOut });
       await bufOut.hostAccess('readonly');

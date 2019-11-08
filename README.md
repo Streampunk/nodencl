@@ -182,7 +182,9 @@ The second argument describes the intended use of the buffer with respect to exe
 
 The third optional argument determines the type of memory used for the buffer: '`none`' for no shared virtual memory, '`coarse`' for coarse-grained shared virtual memory (where supported), '`fine`' for fine-grained shared virtual memory (where supported). When this argument is not present, the default value is the expected-to-be-fastest kind of memory supported by the device.
 
-The fourth optional argument is a string that allows allocations to have an owner name associated with them. This can be helpful in logging and enables resource management as follows.
+The fourth optional argument is required if a buffer is to be used as input or output as an image type in a kernel - eg image_2d_t. This argument is an object that is used to provide the image dimensions with properties `width`, `height` and `depth` as required.
+
+The fifth optional argument is a string that allows allocations to have an owner name associated with them. This can be helpful in logging and enables resource management as follows.
 
 Graphics RAM is a limited resource. To help manage this nodencl includes a resource management system that allows buffer allocations to be referenced and released. When a buffer is created with an owner, it is marked as 'reserved'. The buffer provides two methods '`addRef()`' and '`release()`' that are used to control the buffer lifetime.
 

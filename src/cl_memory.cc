@@ -56,10 +56,11 @@ private:
 class clMemory : public iClMemory, public iGpuAccess {
 public:
   clMemory(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, 
-           uint32_t numBytes, deviceInfo *devInfo)
-    : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType), mNumBytes(numBytes),
+           uint32_t numBytes, deviceInfo *devInfo, const std::array<uint32_t, 3>& imageDims)
+    : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType),
+      mNumBytes(numBytes), mDevInfo(devInfo), mImageDims(imageDims),
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
-      mMapFlags(eMemFlags::NONE), mImageAccessAttribute(iKernelArg::eAccess::NONE), mDevInfo(devInfo) {}
+      mMapFlags(eMemFlags::NONE), mImageAccessAttribute(iKernelArg::eAccess::NONE) {}
   ~clMemory() {
     freeAllocation();
   }
@@ -124,14 +125,6 @@ public:
           error = copyImageToBuffer();
           if (CL_SUCCESS != error) return;
         }
-
-        // Optimisation - if readonly access need not release mImageMem - but need to know if buffer is still up-to-date before next buffer kernel op?
-        // if (CL_MAP_READ != mapFlags) {
-          error = clReleaseMemObject(mImageMem);
-          mImageMem = nullptr;
-          mImageAccessAttribute = iKernelArg::eAccess::READONLY;
-          if (CL_SUCCESS != error) return;
-        // }
       }
 
       if (eSvmType::NONE == mSvmType) {
@@ -192,6 +185,7 @@ public:
     }
   }
   void* hostBuf() const { return mHostBuf; }
+  bool hasDimensions() const { return mImageDims[0] > 0; }
 
 private:
   cl_context mContext;
@@ -199,6 +193,8 @@ private:
   const eMemFlags mMemFlags;
   const eSvmType mSvmType;
   const uint32_t mNumBytes;
+  deviceInfo *mDevInfo;
+  const std::array<uint32_t, 3> mImageDims;
   cl_mem mPinnedMem;
   cl_mem mImageMem;
   void *mHostBuf;
@@ -206,7 +202,6 @@ private:
   bool mHostMapped;
   eMemFlags mMapFlags;
   iKernelArg::eAccess mImageAccessAttribute;
-  deviceInfo *mDevInfo;
 
   cl_int unmapMem() {
     cl_int error = CL_SUCCESS;
@@ -228,8 +223,10 @@ private:
       size_t region[3] = { 1, 1, 1 };
       error = clGetImageInfo(mImageMem, CL_IMAGE_WIDTH, sizeof(size_t), &region[0], NULL);
       PASS_CL_ERROR;
-      error = clGetImageInfo(mImageMem, CL_IMAGE_HEIGHT, sizeof(size_t), &region[1], NULL);
+      size_t height = 0;
+      error = clGetImageInfo(mImageMem, CL_IMAGE_HEIGHT, sizeof(size_t), &height, NULL);
       PASS_CL_ERROR;
+      if (height) region[1] = height;
       size_t depth = 0;
       error = clGetImageInfo(mImageMem, CL_IMAGE_DEPTH, sizeof(size_t), &depth, NULL);
       PASS_CL_ERROR;
@@ -250,11 +247,7 @@ private:
     if (isImageParam) {
       mImageAccessAttribute = access;
       if (!mImageMem) {
-        // create new image object based on global work items as image dimensions
-        std::vector<size_t> imageDims;
-        for (size_t i = 0; i < runParams->numDims(); ++i)
-          imageDims.push_back(runParams->globalWorkItems()[i]);
-
+        // create new image object
         cl_image_format clImageFormat;
         memset(&clImageFormat, 0, sizeof(clImageFormat));
         clImageFormat.image_channel_order = CL_RGBA;
@@ -262,10 +255,10 @@ private:
 
         cl_image_desc clImageDesc;
         memset(&clImageDesc, 0, sizeof(clImageDesc));
-        clImageDesc.image_type = imageDims.size() > 2 ? CL_MEM_OBJECT_IMAGE3D : CL_MEM_OBJECT_IMAGE2D;
-        clImageDesc.image_width = imageDims[0];
-        clImageDesc.image_height = imageDims.size() > 1 ? imageDims[1] : 1;
-        clImageDesc.image_depth = imageDims.size() > 2 ? imageDims[2] : 1;
+        clImageDesc.image_type = runParams->numDims() > 2 ? CL_MEM_OBJECT_IMAGE3D : CL_MEM_OBJECT_IMAGE2D;
+        clImageDesc.image_width = mImageDims[0];
+        clImageDesc.image_height = runParams->numDims() > 1 ? mImageDims[1] : 1;
+        clImageDesc.image_depth = runParams->numDims() > 2 ? mImageDims[2] : 1;
         if (mDevInfo->oclVer >= clVersion(2,0))
           clImageDesc.mem_object = mPinnedMem;
 
@@ -280,8 +273,8 @@ private:
           // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
           // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
           size_t region[3] = { 1, 1, 1 };
-          for (size_t i = 0; i < imageDims.size(); ++i)
-            region[i] = imageDims[i];
+          for (size_t i = 0; i < runParams->numDims(); ++i)
+            region[i] = mImageDims[i];
           error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
           PASS_CL_ERROR;
         }
@@ -292,11 +285,7 @@ private:
         error = copyImageToBuffer();
         PASS_CL_ERROR;
       }
-      error = clReleaseMemObject(mImageMem);
-      PASS_CL_ERROR;
-      mImageMem = nullptr;
       mImageAccessAttribute = iKernelArg::eAccess::READONLY;
-
       kernelMem = mPinnedMem;
     }
 
@@ -308,6 +297,7 @@ private:
   }
 };
 
-iClMemory *iClMemory::create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, uint32_t numBytes, deviceInfo *devInfo) {
-  return new clMemory(context, commands, memFlags, svmType, numBytes, devInfo);
+iClMemory *iClMemory::create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType,
+                             uint32_t numBytes, deviceInfo *devInfo, const std::array<uint32_t, 3>& imageDims) {
+  return new clMemory(context, commands, memFlags, svmType, numBytes, devInfo, imageDims);
 }

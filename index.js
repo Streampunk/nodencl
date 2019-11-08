@@ -82,10 +82,12 @@ clContext.prototype.checkAlloc = async function(cb) {
   return result;
 };
 
-clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, owner) {
+clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, imageDims, owner) {
   if (!bufType) bufType = 'none';
+  if (!imageDims) imageDims = {};
   const buf = this.buffers.find(el => 
-    !el.reserved && (el.length === numBytes) && (el.bufDir === bufDir) && (el.bufType === bufType));
+    !el.reserved && (el.length === numBytes) && (el.bufDir === bufDir) &&
+                    (el.bufType === bufType) && (el.imageDims === imageDims));
   if (buf) {
     this.logger.log(`reuse ${owner}: ${buf.owner} ${numBytes} bytes`);
     buf.reserved = true;
@@ -93,13 +95,14 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, own
     buf.refs = 0;
     return buf;
   } else return this.context
-    .then(c => this.checkAlloc(() => c.createBuffer(numBytes, bufDir, bufType)))
+    .then(c => this.checkAlloc(() => c.createBuffer(numBytes, bufDir, bufType, imageDims)))
     .then(buf => {
       buf.reserved = true;
       buf.owner = owner;
       buf.index = this.bufIndex++;
       buf.bufDir = bufDir;
       buf.bufType = bufType;
+      buf.imageDims = imageDims;
       buf.refs = 0;
       buf.addRef = () => addReference(buf, this.buffers);
       buf.release = () => releaseReference(buf);

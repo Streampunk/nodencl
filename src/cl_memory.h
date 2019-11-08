@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <memory>
 #include <string>
+#include <array>
 #include "run_params.h"
 
 class iRunParams;
@@ -43,7 +44,7 @@ public:
   virtual ~iClMemory() {}
 
   static iClMemory *create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, 
-                           uint32_t numBytes, deviceInfo *devInfo);
+                           uint32_t numBytes, deviceInfo *devInfo, const std::array<uint32_t, 3>& imageDims);
 
   virtual bool allocate() = 0;
   virtual std::shared_ptr<iGpuMemory> getGPUMemory() = 0;
@@ -55,6 +56,7 @@ public:
   virtual eSvmType svmType() const = 0;
   virtual std::string svmTypeName() const = 0;
   virtual void* hostBuf() const = 0;
+  virtual bool hasDimensions() const = 0;
 };
 
 #endif

@@ -241,6 +241,11 @@ napi_value run(napi_env env, napi_callback_info info) {
       CHECK_STATUS;
       status = napi_get_value_external(env, clMemValue, (void**)&kp->value.clMem);
       CHECK_STATUS;
+      if ((eParamFlags::IMAGE == kp->valueType) && !kp->value.clMem->hasDimensions()) {
+        status = napi_throw_error(env, nullptr, "Buffer used as image type must provide image dimensions");
+        delete kp;
+        return nullptr;
+      }
       break;
     default:
       printf("Unsupported parameter value type: \'%d\'\n", valueType);

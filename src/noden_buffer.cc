@@ -263,13 +263,13 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   napi_status status;
   createBufCarrier* c = new createBufCarrier;
 
-  napi_value args[3];
-  size_t argc = 3;
+  napi_value args[4];
+  size_t argc = 4;
   napi_value contextValue;
   status = napi_get_cb_info(env, info, &argc, args, &contextValue, nullptr);
   CHECK_STATUS;
 
-  if (argc < 2 || argc > 3) {
+  if (argc < 2 || argc > 4) {
     status = napi_throw_error(env, nullptr, "Wrong number of arguments to create buffer.");
     delete c;
     return nullptr;
@@ -314,7 +314,7 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
                        eMemFlags::READONLY;
 
   napi_value bufTypeValue;
-  if (argc == 3) {
+  if (argc >= 3) {
     status = napi_typeof(env, args[2], &t);
     CHECK_STATUS;
     if (t != napi_string) {
@@ -356,6 +356,46 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
+  std::array<uint32_t, 3> imageDims = {0, 0, 0};
+  if (argc == 4) {
+    napi_value dimsValue = args[3];
+    status = napi_typeof(env, dimsValue, &t);
+    CHECK_STATUS;
+    if (t != napi_object) {
+      status = napi_throw_type_error(env, nullptr, "Fourth argument must be an object.");
+      return nullptr;
+    }
+
+    bool hasProp;
+    status = napi_has_named_property(env, dimsValue, "width", &hasProp);
+    CHECK_STATUS;
+    if (hasProp) {
+      napi_value widthValue;
+      status = napi_get_named_property(env, dimsValue, "width", &widthValue);
+      CHECK_STATUS;
+      status = napi_get_value_uint32(env, widthValue, &imageDims[0]);
+      CHECK_STATUS;
+    }
+    status = napi_has_named_property(env, dimsValue, "height", &hasProp);
+    CHECK_STATUS;
+    if (hasProp) {
+      napi_value heightValue;
+      status = napi_get_named_property(env, dimsValue, "height", &heightValue);
+      CHECK_STATUS;
+      status = napi_get_value_uint32(env, heightValue, &imageDims[1]);
+      CHECK_STATUS;
+    }
+    status = napi_has_named_property(env, dimsValue, "depth", &hasProp);
+    CHECK_STATUS;
+    if (hasProp) {
+      napi_value depthValue;
+      status = napi_get_named_property(env, dimsValue, "depth", &depthValue);
+      CHECK_STATUS;
+      status = napi_get_value_uint32(env, depthValue, &imageDims[2]);
+      CHECK_STATUS;
+    }
+  }
+
   // Extract externals into variables
   napi_value jsContext;
   void* contextData;
@@ -384,7 +424,7 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
 
   // Create holder for host and gpu buffers
-  c->clMem = iClMemory::create(context, commands, memFlags, svmType, numBytes, devInfo);
+  c->clMem = iClMemory::create(context, commands, memFlags, svmType, numBytes, devInfo, imageDims);
 
   status = napi_create_reference(env, contextValue, 1, &c->passthru);
   CHECK_STATUS;
