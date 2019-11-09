@@ -269,15 +269,16 @@ private:
         PASS_CL_ERROR;
 
         kernelMem = mImageMem;
-        if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
-          // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
-          // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
-          size_t region[3] = { 1, 1, 1 };
-          for (size_t i = 0; i < runParams->numDims(); ++i)
-            region[i] = mImageDims[i];
-          error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
-          PASS_CL_ERROR;
-        }
+      }
+
+      if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
+        // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
+        // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
+        size_t region[3] = { 1, 1, 1 };
+        for (size_t i = 0; i < runParams->numDims(); ++i)
+          region[i] = mImageDims[i];
+        error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+        PASS_CL_ERROR;
       }
     } else if (mImageMem) {
       if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::READONLY != mImageAccessAttribute)) {
