@@ -60,7 +60,7 @@ public:
     : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType),
       mNumBytes(numBytes), mDevInfo(devInfo), mImageDims(imageDims),
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
-      mMapFlags(eMemFlags::NONE), mImageAccessAttribute(iKernelArg::eAccess::NONE) {}
+      mMapFlags(eMemFlags::NONE), mMemLatest(eMemLatest::BUFFER) {}
   ~clMemory() {
     freeAllocation();
   }
@@ -120,8 +120,10 @@ public:
       cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
                               (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
                               CL_MAP_READ;
-      if (mImageMem) {
-        if ((mDevInfo->oclVer < clVersion(2,0)) && (CL_MAP_WRITE != mapFlags)) {
+      if (mImageMem && (mDevInfo->oclVer < clVersion(2,0))) {
+        if (CL_MAP_WRITE == mapFlags)
+          mMemLatest = eMemLatest::BUFFER;
+        else {
           error = copyImageToBuffer();
           if (CL_SUCCESS != error) return;
         }
@@ -187,6 +189,8 @@ public:
   void* hostBuf() const { return mHostBuf; }
   bool hasDimensions() const { return mImageDims[0] > 0; }
 
+  enum class eMemLatest : uint8_t { BUFFER = 0, SAME = 1, IMAGE = 2 };
+
 private:
   cl_context mContext;
   cl_command_queue mCommands;
@@ -201,7 +205,7 @@ private:
   bool mGpuLocked;
   bool mHostMapped;
   eMemFlags mMapFlags;
-  iKernelArg::eAccess mImageAccessAttribute;
+  eMemLatest mMemLatest;
 
   cl_int unmapMem() {
     cl_int error = CL_SUCCESS;
@@ -235,6 +239,7 @@ private:
       // printf("Copying image memory to buffer size %zdx%zd\n", region[0], region[1]);
       error = clEnqueueCopyImageToBuffer(mCommands, mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
       PASS_CL_ERROR;
+      mMemLatest = eMemLatest::SAME;
     }
     return error;
   }
@@ -245,7 +250,6 @@ private:
     cl_int error = CL_SUCCESS;
 
     if (isImageParam) {
-      mImageAccessAttribute = access;
       if (!mImageMem) {
         // create new image object
         cl_image_format clImageFormat;
@@ -271,22 +275,24 @@ private:
         kernelMem = mImageMem;
       }
 
-      if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::WRITEONLY != mImageAccessAttribute)) {
-        // don't copy from buffer if this has a write-only argument attribute - it will be overwritten by the kernel
-        // printf("Copying image memory from buffer size %zdx%zd\n", imageDims[0], imageDims[1]);
-        size_t region[3] = { 1, 1, 1 };
-        for (size_t i = 0; i < runParams->numDims(); ++i)
-          region[i] = mImageDims[i];
-        error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
-        PASS_CL_ERROR;
+      if (mDevInfo->oclVer < clVersion(2,0)) {
+        if (iKernelArg::eAccess::WRITEONLY == access)
+          mMemLatest = eMemLatest::IMAGE;
+        else if (eMemLatest::BUFFER == mMemLatest) {
+          // printf("Copying image memory from buffer size %dx%d\n", mImageDims[0], mImageDims[1]);
+          size_t region[3] = { 1, 1, 1 };
+          for (size_t i = 0; i < runParams->numDims(); ++i)
+            region[i] = mImageDims[i];
+          error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+          PASS_CL_ERROR;
+        }
       }
     } else if (mImageMem) {
-      if ((mDevInfo->oclVer < clVersion(2,0)) && (iKernelArg::eAccess::READONLY != mImageAccessAttribute)) {
-        // don't copy back to buffer if this had a read-only argument attribute - the buffer is already up-to-date
+      // copy back from image if required, leave image allocation allocated
+      if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemLatest::IMAGE == mMemLatest)) {
         error = copyImageToBuffer();
         PASS_CL_ERROR;
       }
-      mImageAccessAttribute = iKernelArg::eAccess::READONLY;
       kernelMem = mPinnedMem;
     }
 
