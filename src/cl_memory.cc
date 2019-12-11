@@ -17,6 +17,7 @@
 #include "noden_context.h"
 #include "noden_program.h"
 #include "noden_util.h"
+#include <cstring>
 
 class iGpuAccess {
 public:
