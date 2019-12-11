@@ -16,18 +16,21 @@
 #include "noden_buffer.h"
 #include "noden_util.h"
 #include "cl_memory.h"
-#include <cstring>
+#include <vector>
+#include <sstream>
 
 struct deviceInfo;
 
 struct createBufCarrier : carrier {
   napi_ref contextRef = nullptr;
   iClMemory *clMem = nullptr;
+  uint32_t numQueues = 1;
 };
 
 struct hostAccessCarrier : carrier {
   iClMemory *clMem = nullptr;
   eMemFlags haFlags = eMemFlags::READWRITE;
+  uint32_t queueNum = 0;
   void* srcBuf = nullptr;
   size_t srcBufSize = 0;
 };
@@ -36,11 +39,13 @@ void hostAccessExecute(napi_env env, void* data) {
   hostAccessCarrier* c = (hostAccessCarrier*) data;
   cl_int error;
 
-  c->clMem->setHostAccess(error, c->haFlags);
+  error = c->clMem->setHostAccess(c->haFlags, c->queueNum);
   ASYNC_CL_ERROR;
 
-  if (c->srcBuf)
-    memcpy(c->clMem->hostBuf(), c->srcBuf, c->srcBufSize);
+  if (c->srcBuf) {
+    error = c->clMem->copyFrom(c->srcBuf, c->srcBufSize, c->queueNum);
+    ASYNC_CL_ERROR;
+  }
 }
 
 void hostAccessComplete(napi_env env, napi_status asyncStatus, void* data) {
@@ -66,13 +71,13 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
   napi_status status;
   hostAccessCarrier* c = new hostAccessCarrier;
 
-  napi_value args[2];
-  size_t argc = 2;
+  napi_value args[3];
+  size_t argc = 3;
   napi_value bufferValue;
   status = napi_get_cb_info(env, info, &argc, args, &bufferValue, nullptr);
   CHECK_STATUS;
 
-  if (argc > 2) {
+  if (argc > 3) {
     status = napi_throw_error(env, nullptr, "Wrong number of arguments to hostAccess.");
     delete c;
     return nullptr;
@@ -96,37 +101,72 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
   char haflag[10];
   status = napi_get_value_string_utf8(env, hostDirValue, haflag, 10, nullptr);
   CHECK_STATUS;
-  if ((strcmp(haflag, "readwrite") != 0) && (strcmp(haflag, "writeonly") != 0) && (strcmp(haflag, "readonly") != 0)) {
-    status = napi_throw_error(env, nullptr, "Host access direction must be one of 'readwrite', 'writeonly' or 'readonly'.");
+  if ((strcmp(haflag, "readwrite") != 0) && (strcmp(haflag, "writeonly") != 0) && (strcmp(haflag, "readonly") != 0) && (strcmp(haflag, "none") != 0)) {
+    status = napi_throw_error(env, nullptr, "Host access direction must be one of 'none, 'readwrite', 'writeonly' or 'readonly'.");
     delete c;
     return nullptr;
   }
   c->haFlags = (0==strcmp("readwrite", haflag)) ? eMemFlags::READWRITE :
                (0==strcmp("writeonly", haflag)) ? eMemFlags::WRITEONLY :
-               eMemFlags::READONLY;
+               (0==strcmp("readonly", haflag)) ? eMemFlags::READONLY :
+               eMemFlags::NONE;
 
-  if ((argc == 2) && (c->haFlags == eMemFlags::READONLY)) {
-    napi_throw_type_error(env, nullptr, "Optional second argument source buffer provided when access is readonly.");
+  void* data = nullptr;
+  size_t dataSize = 0;
+  if (argc > 1) {
+    napi_value srcBufVal = nullptr;
+    napi_valuetype t;
+    status = napi_typeof(env, args[1], &t);
+    CHECK_STATUS;
+    if (t == napi_number) {
+      int32_t checkValue;
+      status = napi_get_value_int32(env, args[1], &checkValue);
+      CHECK_STATUS;
+
+      napi_value numQueuesValue;
+      uint32_t numQueues = 1;
+      status = napi_get_named_property(env, bufferValue, "numQueues", &numQueuesValue);
+      CHECK_STATUS;
+      status = napi_get_value_uint32(env, numQueuesValue, &numQueues);
+      CHECK_STATUS;
+
+      if (!((checkValue >= 0) && (checkValue < (int32_t)numQueues))) {
+        status = napi_throw_range_error(env, nullptr, "Optional parameter queueNum out of range.");
+        delete c;
+        return nullptr;
+      }
+      status = napi_get_value_uint32(env, args[1], &c->queueNum);
+      CHECK_STATUS;
+
+      if (argc > 2) 
+        srcBufVal = args[2];
+    } else {
+      printf("hostAccess queueNum parameter not provided - defaulting to 0\n");
+      c->queueNum = 0;
+      srcBufVal = args[1];
+    }
+
+    if (srcBufVal) {
+      bool isBuffer;
+      status = napi_is_buffer(env, srcBufVal, &isBuffer);
+      CHECK_STATUS;
+      if (!isBuffer) {
+        napi_throw_type_error(env, nullptr, "Optional third argument must be a buffer - the source data.");
+        delete c;
+        return nullptr;
+      }
+
+      status = napi_get_buffer_info(env, srcBufVal, &data, &dataSize);
+      CHECK_STATUS;
+    }
+  }
+
+  if (dataSize && (c->haFlags == eMemFlags::READONLY)) {
+    napi_throw_type_error(env, nullptr, "Optional third argument source buffer provided when access is readonly.");
     delete c;
     return nullptr;
   }
 
-  void* data = nullptr;
-  size_t dataSize = 0;
-  if (argc == 2) {
-    bool isBuffer;
-    status = napi_is_buffer(env, args[1], &isBuffer);
-    CHECK_STATUS;
-    if (!isBuffer) {
-      napi_throw_type_error(env, nullptr, "Optional second argument must be a buffer - the source data.");
-      delete c;
-      return nullptr;
-    }
-
-    status = napi_get_buffer_info(env, args[1], &data, &dataSize);
-    CHECK_STATUS;
-  }
-  
   napi_value clMemValue;
   status = napi_get_named_property(env, bufferValue, "clMemory", &clMemValue);
   CHECK_STATUS;
@@ -218,6 +258,12 @@ void createBufferComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_create_external(env, c->clMem, finalizeClMemory, nullptr, &clMemValue);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "clMemory", clMemValue);
+  REJECT_STATUS;
+
+  napi_value numQueuesValue;
+  c->status = napi_create_uint32(env, c->numQueues, &numQueuesValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "numQueues", numQueuesValue);
   REJECT_STATUS;
 
   napi_value contextRefValue;
@@ -405,13 +451,23 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
   cl_context context = (cl_context) contextData;
 
-  napi_value jsCommands;
-  void* commandsData;
-  status = napi_get_named_property(env, contextValue, "commands", &jsCommands);
+  napi_value numQueuesVal;
+  status = napi_get_named_property(env, contextValue, "numQueues", &numQueuesVal);
   CHECK_STATUS;
-  status = napi_get_value_external(env, jsCommands, &commandsData);
+  status = napi_get_value_uint32(env, numQueuesVal, &c->numQueues);
   CHECK_STATUS;
-  cl_command_queue commands = (cl_command_queue) commandsData;
+
+  std::vector<cl_command_queue> commandQueues;
+  commandQueues.resize(c->numQueues);
+  for (uint32_t i = 0; i < c->numQueues; ++i) {
+    std::stringstream ss;
+    ss << "commands_" << i;
+    napi_value commandQueue;
+    status = napi_get_named_property(env, contextValue, ss.str().c_str(), &commandQueue);
+    CHECK_STATUS;
+    status = napi_get_value_external(env, commandQueue, (void**)&commandQueues.at(i));
+    CHECK_STATUS;
+  }
 
   napi_value jsDevInfo;
   deviceInfo *devInfo;
@@ -424,7 +480,7 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
   CHECK_STATUS;
 
   // Create holder for host and gpu buffers
-  c->clMem = iClMemory::create(context, commands, memFlags, svmType, numBytes, devInfo, imageDims);
+  c->clMem = iClMemory::create(context, commandQueues, memFlags, svmType, numBytes, devInfo, imageDims);
 
   status = napi_create_reference(env, contextValue, 1, &c->passthru);
   CHECK_STATUS;

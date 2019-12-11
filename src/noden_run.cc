@@ -15,11 +15,11 @@
 
 #include "noden_run.h"
 #include "cl_memory.h"
+#include "sstream"
 
 void runExecute(napi_env env, void* data) {
   runCarrier* c = (runCarrier*) data;
-  cl_int error;
-
+  cl_int error = CL_SUCCESS;
   // HR_TIME_POINT bufAlloc = NOW;
   // Not recording buffer create time - should probably be done once, before here
 
@@ -37,8 +37,10 @@ void runExecute(napi_env env, void* data) {
     uint32_t p = paramIter.first;
     kernelParam* param = paramIter.second;
     if (eParamFlags::VALUE != param->valueType) {
-      error = param->gpuAccess->setKernelParam(c->kernel, p, eParamFlags::IMAGE == param->valueType, param->access, c->runParams);
+      error = param->gpuAccess->setKernelParam(c->kernel, p, eParamFlags::IMAGE == param->valueType, 
+                                               param->access, c->runParams, c->queueNum);
       ASYNC_CL_ERROR;
+      param->gpuAccess.reset();
     }
   }
 
@@ -58,28 +60,36 @@ void runExecute(napi_env env, void* data) {
     ASYNC_CL_ERROR;
   }
 
+  uint32_t q = c->queueNum;
+  if (q >= (uint32_t)c->commandQueues.size()) {
+    printf("Invalid queue \'%d\', defaulting to 0\n", q);
+    q = 0;
+  }
+  cl_command_queue commandQueue = c->commandQueues.at(q);
+
   c->dataToKernel = microTime(dataToKernelStart);
   HR_TIME_POINT kernelExecStart = NOW;
 
   size_t numDims = c->runParams->numDims();
   const size_t *global = c->runParams->globalWorkItems();
   const size_t *local = c->runParams->workItemsPerGroup();
-  error = clEnqueueNDRangeKernel(c->commands, c->kernel, numDims, nullptr, global, local, 0, nullptr, nullptr);
+  error = clEnqueueNDRangeKernel(commandQueue, c->kernel, numDims, nullptr, global, local, 0, nullptr, nullptr);
   ASYNC_CL_ERROR;
 
-  error = clFinish(c->commands);
-  ASYNC_CL_ERROR;
+  if (1 == c->commandQueues.size()) {
+    error = clFinish(commandQueue);
+    ASYNC_CL_ERROR;
+  }
 
   c->kernelExec = microTime(kernelExecStart);
   HR_TIME_POINT dataFromKernelStart = NOW;
 
-  // Uncomment this block to get the timings for copy to host
+  // set host readonly access for any buffers that are declared writeonly for the kernel
   // for (auto& paramIter: c->kernelParams) {
   //   uint32_t p = paramIter.first;
   //   kernelParam* param = paramIter.second;
   //   if ((eParamFlags::VALUE != param->valueType) && (eMemFlags::WRITEONLY == param->value.clMem->memFlags())) {
-  //     param->gpuAccess.reset();
-  //     param->value.clMem->setHostAccess(error, eMemFlags::READONLY);
+  //     param->value.clMem->setHostAccess(error, eMemFlags::READONLY, c->queueNum);
   //     ASYNC_CL_ERROR;
   //   }
   // }
@@ -138,14 +148,14 @@ napi_value run(napi_env env, napi_callback_info info) {
   napi_status status;
   runCarrier* c = new runCarrier;
 
-  napi_value args[1];
-  size_t argc = 1;
+  napi_value args[2];
+  size_t argc = 2;
   napi_value programValue;
   status = napi_get_cb_info(env, info, &argc, args, &programValue, nullptr);
   CHECK_STATUS;
 
-  if (argc != 1) {
-    status = napi_throw_error(env, nullptr, "Wrong number of arguments. One expected.");
+  if (!((argc > 0) && (argc <= 2))) {
+    status = napi_throw_error(env, nullptr, "Wrong number of arguments. One or two expected.");
     return nullptr;
   }
 
@@ -257,6 +267,36 @@ napi_value run(napi_env env, napi_callback_info info) {
     c->kernelParams.emplace(p, kp);
   }
 
+  uint32_t numQueues;
+  napi_value numQueuesVal;
+  status = napi_get_named_property(env, programValue, "numQueues", &numQueuesVal);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, numQueuesVal, &numQueues);
+  CHECK_STATUS;
+
+  if (argc > 1) {
+    status = napi_typeof(env, args[1], &t);
+    CHECK_STATUS;
+    if (t != napi_number) {
+      status = napi_throw_type_error(env, nullptr, "Optional parameter queueNum must be a number.");
+      return nullptr;
+    }
+
+    int32_t checkValue;
+    status = napi_get_value_int32(env, args[1], &checkValue);
+    CHECK_STATUS;
+    if (!((checkValue >= 0) && (checkValue < (int32_t)numQueues))) {
+      status = napi_throw_range_error(env, nullptr, "Optional parameter queueNum out of range.");
+      delete c;
+      return nullptr;
+    }
+    status = napi_get_value_uint32(env, args[1], &c->queueNum);
+    CHECK_STATUS;
+  } else {
+    printf("run queueNum parameter not provided - defaulting to 0\n");
+    c->queueNum = 0;
+  }
+
   // Extract externals into variables
   napi_value jsContext;
   void* contextData;
@@ -266,13 +306,16 @@ napi_value run(napi_env env, napi_callback_info info) {
   c->context = (cl_context) contextData;
   CHECK_STATUS;
 
-  napi_value jsCommands;
-  void* commandsData;
-  status = napi_get_named_property(env, programValue, "commands", &jsCommands);
-  CHECK_STATUS;
-  status = napi_get_value_external(env, jsCommands, &commandsData);
-  c->commands = (cl_command_queue) commandsData;
-  CHECK_STATUS;
+  c->commandQueues.resize(numQueues);
+  for (uint32_t i = 0; i < numQueues; ++i) {
+    std::stringstream ss;
+    ss << "commands_" << i;
+    napi_value commandQueue;
+    status = napi_get_named_property(env, programValue, ss.str().c_str(), &commandQueue);
+    CHECK_STATUS;
+    c->status = napi_get_value_external(env, commandQueue, (void**)&c->commandQueues.at(i));
+    CHECK_STATUS;
+  }
 
   napi_value jsKernel;
   void* kernelData;

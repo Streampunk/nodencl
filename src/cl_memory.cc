@@ -17,14 +17,13 @@
 #include "noden_context.h"
 #include "noden_program.h"
 #include "noden_util.h"
-#include <vector>
-#include <cstring>
 
 class iGpuAccess {
 public:
   virtual ~iGpuAccess() {}
-  virtual cl_int unmapMem() = 0;
-  virtual cl_int getKernelMem(iRunParams *runParams, bool isImageParam, iKernelArg::eAccess access, cl_mem &kernelMem) = 0;
+  virtual cl_int unmapMem(uint32_t queueNum) = 0;
+  virtual cl_int getKernelMem(iRunParams *runParams, bool isImageParam,
+                              iKernelArg::eAccess access, bool &isSVM, void *&kernelMem, uint32_t queueNum) = 0;
   virtual void onGpuReturn() = 0;
 };
 
@@ -36,16 +35,21 @@ public:
     mGpuAccess->onGpuReturn();
   }
 
-  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, iKernelArg::eAccess access, iRunParams *runParams) const {
+  cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam,
+                        iKernelArg::eAccess access, iRunParams *runParams, uint32_t queueNum) {
     cl_int error = CL_SUCCESS;
-    error = mGpuAccess->unmapMem();
+    error = mGpuAccess->unmapMem(queueNum);
     PASS_CL_ERROR;
 
-    cl_mem kernelMem = nullptr;
-    error = mGpuAccess->getKernelMem(runParams, isImageParam, access, kernelMem);
+    bool isSVM = false;
+    void *kernelMem = nullptr;
+    error = mGpuAccess->getKernelMem(runParams, isImageParam, access, isSVM, kernelMem, queueNum);
     PASS_CL_ERROR;
 
-    error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), &kernelMem);
+    if (isSVM)
+      error = clSetKernelArgSVMPointer(kernel, paramIndex, kernelMem);
+    else
+      error = clSetKernelArg(kernel, paramIndex, sizeof(cl_mem), kernelMem);
     return error;
   }
 
@@ -55,9 +59,9 @@ private:
 
 class clMemory : public iClMemory, public iGpuAccess {
 public:
-  clMemory(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, 
+  clMemory(cl_context context, std::vector<cl_command_queue> commandQueues, eMemFlags memFlags, eSvmType svmType, 
            uint32_t numBytes, deviceInfo *devInfo, const std::array<uint32_t, 3>& imageDims)
-    : mContext(context), mCommands(commands), mMemFlags(memFlags), mSvmType(svmType),
+    : mContext(context), mCommandQueues(commandQueues), mMemFlags(memFlags), mSvmType(svmType),
       mNumBytes(numBytes), mDevInfo(devInfo), mImageDims(imageDims),
       mPinnedMem(nullptr), mImageMem(nullptr), mHostBuf(nullptr), mGpuLocked(false), mHostMapped(false),
       mMapFlags(eMemFlags::NONE), mMemLatest(eMemLatest::BUFFER) {}
@@ -87,7 +91,7 @@ public:
         cl_map_flags clMapFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MAP_WRITE_INVALIDATE_REGION : 
                                   (eMemFlags::WRITEONLY == mMemFlags) ? CL_MAP_READ :
                                   CL_MAP_READ | CL_MAP_WRITE;
-        mHostBuf = clEnqueueMapBuffer(mCommands, mPinnedMem, CL_TRUE, clMapFlags, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
+        mHostBuf = clEnqueueMapBuffer(mCommandQueues[0], mPinnedMem, CL_TRUE, clMapFlags, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
       } else
         printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
           __FILE__, __LINE__, error, clGetErrorString(error));
@@ -105,50 +109,67 @@ public:
     return std::make_shared<gpuMemory>(this);
   }
 
-  void setHostAccess(cl_int &error, eMemFlags haFlags) {
-    error = CL_SUCCESS;
+  cl_int setHostAccess(eMemFlags haFlags, uint32_t queueNum) {
+    cl_int error = CL_SUCCESS;
     if (mGpuLocked) {
       printf("GPU buffer access must be released before host access - %d\n", mNumBytes);
       error = CL_MAP_FAILURE;
-      return;
+      return error;
     }
 
-    if (mHostMapped && (haFlags != mMapFlags))
-      unmapMem(); // must unmap if host access flags don't match
+    if (mHostMapped && (haFlags != mMapFlags)) {
+      error = unmapMem(queueNum); // must unmap if host access flags don't match
+      PASS_CL_ERROR;
+    }
 
-    if (!mHostMapped) {
+    if (!mHostMapped && !(eMemFlags::NONE == haFlags)) {
       cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
-                              (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE :
+                              (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE_INVALIDATE_REGION :
                               CL_MAP_READ;
       if (mImageMem && (mDevInfo->oclVer < clVersion(2,0))) {
-        if (CL_MAP_WRITE == mapFlags)
+        if (eMemFlags::WRITEONLY == haFlags)
           mMemLatest = eMemLatest::BUFFER;
         else {
-          error = copyImageToBuffer();
-          if (CL_SUCCESS != error) return;
+          error = copyImageToBuffer(queueNum);
+          PASS_CL_ERROR;
         }
       }
 
+      bool blockingMap = mCommandQueues.size() > 1 ? CL_NON_BLOCKING : CL_BLOCKING;
       if (eSvmType::NONE == mSvmType) {
-        void *hostBuf = clEnqueueMapBuffer(mCommands, mPinnedMem, CL_TRUE, mapFlags, 0, mNumBytes, 0, nullptr, nullptr, nullptr);
+        void *hostBuf = clEnqueueMapBuffer(getCommandQueue(queueNum), mPinnedMem, blockingMap, mapFlags, 0, mNumBytes, 0, nullptr, nullptr, &error);
+        PASS_CL_ERROR;
         if (mHostBuf != hostBuf) {
           printf("Unexpected behaviour - mapped buffer address is not the same: %p != %p\n", mHostBuf, hostBuf);
           error = CL_MAP_FAILURE;
-          return;
+          return error;
         }
         mHostMapped = true;
       } else if (eSvmType::COARSE == mSvmType) {
-        error = clEnqueueSVMMap(mCommands, CL_TRUE, mapFlags, mHostBuf, mNumBytes, 0, 0, 0);
+        error = clEnqueueSVMMap(getCommandQueue(queueNum), blockingMap, mapFlags, mHostBuf, mNumBytes, 0, nullptr, nullptr);
+        PASS_CL_ERROR;
         mHostMapped = true;
       }
 
       mMapFlags = haFlags;
     }
+    return error;
+  }
+
+  cl_int copyFrom(const void *srcBuf, size_t numBytes, uint32_t queueNum) {
+    cl_int error = CL_SUCCESS;
+
+    // if (eSvmType::NONE == mSvmType)
+      memcpy(mHostBuf, srcBuf, numBytes);
+    // else
+    //   error = clEnqueueSVMMemcpy(getCommandQueue(queueNum), CL_BLOCKING, mHostBuf, srcBuf, numBytes, 0, nullptr, nullptr);
+    // PASS_CL_ERROR;
+    return error;
   }
 
   void freeAllocation() {
     cl_int error = CL_SUCCESS;
-    error = unmapMem();
+    error = unmapMem(0);
     if (CL_SUCCESS != error)
       printf("OpenCL error in subroutine. Location %s(%d). Error %i: %s\n",
         __FILE__, __LINE__, error, clGetErrorString(error));
@@ -193,7 +214,7 @@ public:
 
 private:
   cl_context mContext;
-  cl_command_queue mCommands;
+  std::vector<cl_command_queue> mCommandQueues;
   const eMemFlags mMemFlags;
   const eSvmType mSvmType;
   const uint32_t mNumBytes;
@@ -207,20 +228,29 @@ private:
   eMemFlags mMapFlags;
   eMemLatest mMemLatest;
 
-  cl_int unmapMem() {
+  cl_command_queue getCommandQueue(uint32_t queueNum) {
+    uint32_t q = queueNum;
+    if (queueNum >= (uint32_t)mCommandQueues.size()) {
+      printf("Invalid queue \'%d\', defaulting to 0\n", queueNum);
+      q = 0;
+    }
+    return mCommandQueues.at(q);
+  }
+
+  cl_int unmapMem(uint32_t queueNum) {
     cl_int error = CL_SUCCESS;
     if (mHostMapped) {
       if (eSvmType::NONE == mSvmType)
-        error = clEnqueueUnmapMemObject(mCommands, mPinnedMem, mHostBuf, 0, nullptr, nullptr);
+        error = clEnqueueUnmapMemObject(getCommandQueue(queueNum), mPinnedMem, mHostBuf, 0, nullptr, nullptr);
       else if (eSvmType::COARSE == mSvmType)
-        error = clEnqueueSVMUnmap(mCommands, mHostBuf, 0, 0, 0);
+        error = clEnqueueSVMUnmap(getCommandQueue(queueNum), mHostBuf, 0, 0, nullptr);
       mHostMapped = false;
       mMapFlags = eMemFlags::NONE;
     }
     return error;
   }
 
-  cl_int copyImageToBuffer() {
+  cl_int copyImageToBuffer(uint32_t queueNum) {
     cl_int error = CL_SUCCESS;
     if (mImageMem) {
       const size_t origin[3] = { 0, 0, 0 };
@@ -237,15 +267,16 @@ private:
       if (depth) region[2] = depth;
 
       // printf("Copying image memory to buffer size %zdx%zd\n", region[0], region[1]);
-      error = clEnqueueCopyImageToBuffer(mCommands, mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
+      error = clEnqueueCopyImageToBuffer(getCommandQueue(queueNum), mImageMem, mPinnedMem, origin, region, 0, 0, nullptr, nullptr);
       PASS_CL_ERROR;
       mMemLatest = eMemLatest::SAME;
     }
     return error;
   }
 
-  cl_int getKernelMem(iRunParams *runParams, bool isImageParam, iKernelArg::eAccess access, cl_mem &kernelMem) {
-    kernelMem = mImageMem ? mImageMem : mPinnedMem;
+  cl_int getKernelMem(iRunParams *runParams, bool isImageParam,
+                      iKernelArg::eAccess access, bool &isSVM, void *&kernelMem, uint32_t queueNum) {
+    kernelMem = mImageMem ? &mImageMem : &mPinnedMem;
     const size_t origin[3] = { 0, 0, 0 };
     cl_int error = CL_SUCCESS;
 
@@ -272,7 +303,7 @@ private:
         mImageMem = clCreateImage(mContext, clMemFlags, &clImageFormat, &clImageDesc, nullptr, &error);
         PASS_CL_ERROR;
 
-        kernelMem = mImageMem;
+        kernelMem = &mImageMem;
       }
 
       if (mDevInfo->oclVer < clVersion(2,0)) {
@@ -283,18 +314,22 @@ private:
           size_t region[3] = { 1, 1, 1 };
           for (size_t i = 0; i < runParams->numDims(); ++i)
             region[i] = mImageDims[i];
-          error = clEnqueueCopyBufferToImage(mCommands, mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
+          error = clEnqueueCopyBufferToImage(getCommandQueue(queueNum), mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
           PASS_CL_ERROR;
         }
       }
     } else if (mImageMem) {
       // copy back from image if required, leave image allocation allocated
       if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemLatest::IMAGE == mMemLatest)) {
-        error = copyImageToBuffer();
+        error = copyImageToBuffer(queueNum);
         PASS_CL_ERROR;
       }
-      kernelMem = mPinnedMem;
+      kernelMem = &mPinnedMem;
     }
+
+    isSVM = (eSvmType::NONE != mSvmType) && !isImageParam;
+    if (isSVM)
+      kernelMem = mHostBuf;
 
     return error;
   }
@@ -304,7 +339,7 @@ private:
   }
 };
 
-iClMemory *iClMemory::create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType,
+iClMemory *iClMemory::create(cl_context context, std::vector<cl_command_queue> commandQueues, eMemFlags memFlags, eSvmType svmType,
                              uint32_t numBytes, deviceInfo *devInfo, const std::array<uint32_t, 3>& imageDims) {
-  return new clMemory(context, commands, memFlags, svmType, numBytes, devInfo, imageDims);
+  return new clMemory(context, commandQueues, memFlags, svmType, numBytes, devInfo, imageDims);
 }

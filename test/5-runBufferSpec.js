@@ -75,7 +75,7 @@ for (let d=0; d<bufDirs.length; ++d) {
 
       await testProgram.run({ input: bufIn, output: bufOut });
       await bufOut.hostAccess('readonly');
-      t.deepEqual(bufOut, bufIn, 'program produced expected result');
+      t.deepEqual(bufOut, srcBuf, 'program produced expected result');
     });
   }
 }

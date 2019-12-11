@@ -26,7 +26,8 @@ async function createContext(params) {
   return (0 === Object.keys(params).length) ? await addon.createContext() :
     await addon.createContext({
       platformIndex: params.platformIndex, 
-      deviceIndex: params.deviceIndex
+      deviceIndex: params.deviceIndex,
+      numQueues: params.overlapping ? 3 : 1
     });
 }
 
@@ -52,6 +53,7 @@ function clContext(params, logger) {
   this.logger = logger || { log: console.log, warn: console.warn, error: console.error };
   this.buffers = [];
   this.bufIndex = 0;
+  this.queue = { load: 0, process: params.overlapping ? 1 : 0, unload: params.overlapping ? 2 : 0 };
 
   this.getPlatformInfo = async () => {
     const c = await this.context;
@@ -127,6 +129,11 @@ clContext.prototype.runProgram = async function(program, params) {
   return await this.checkAlloc(() => program.run(params));
 };
 
+clContext.prototype.waitFinish = async function(queueNum) {
+  return this.context
+    .then(c => c.waitFinish(queueNum));
+};
+
 clContext.prototype.close = function(done) {
   const i = setInterval(() => {
     if (0 === this.buffers.length) {
@@ -151,5 +158,5 @@ clContext.prototype.close = function(done) {
 
 module.exports = {
   getPlatformInfo,
-  clContext 
+  clContext
 };

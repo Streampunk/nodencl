@@ -420,15 +420,24 @@ napi_value createProgram(napi_env env, napi_callback_info info) {
   status = napi_set_named_property(env, program, "context", jsContext);
   CHECK_STATUS;
 
-  napi_value jsCommands;
-  status = napi_get_named_property(env, contextValue, "commands", &jsCommands);
+  uint32_t numQueues;
+  napi_value numQueuesVal;
+  status = napi_get_named_property(env, contextValue, "numQueues", &numQueuesVal);
   CHECK_STATUS;
-  void* commandsData;
-  status = napi_get_value_external(env, jsCommands, &commandsData);
+  status = napi_get_value_uint32(env, numQueuesVal, &numQueues);
   CHECK_STATUS;
-  carrier->commands = (cl_command_queue) commandsData;
-  status = napi_set_named_property(env, program, "commands", jsCommands);
+
+  status = napi_set_named_property(env, program, "numQueues", numQueuesVal);
   CHECK_STATUS;
+  for (uint32_t i = 0; i < numQueues; ++i) {
+    std::stringstream ss;
+    ss << "commands_" << i;
+    napi_value commandQueue;
+    status = napi_get_named_property(env, contextValue, ss.str().c_str(), &commandQueue);
+    CHECK_STATUS;
+    status = napi_set_named_property(env, program, ss.str().c_str(), commandQueue);
+    CHECK_STATUS;
+  }
 
   napi_value platformValue;
   status = napi_get_named_property(env, contextValue, "platformIndex", &platformValue);

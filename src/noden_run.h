@@ -23,6 +23,7 @@
 #endif
 #include <memory>
 #include <string>
+#include <vector>
 #include <map>
 #include "node_api.h"
 #include "noden_util.h"
@@ -55,11 +56,12 @@ struct kernelParam {
 struct runCarrier : carrier {
   std::map<uint32_t, kernelParam*> kernelParams;
   iRunParams *runParams;
+  uint32_t queueNum = 0;
   long long dataToKernel;
   long long kernelExec;
   long long dataFromKernel;
   cl_context context;
-  cl_command_queue commands;
+  std::vector<cl_command_queue> commandQueues;
   cl_kernel kernel;
 };
 

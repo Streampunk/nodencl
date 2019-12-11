@@ -23,6 +23,7 @@
 #endif
 #include <stdio.h>
 #include <string>
+#include <vector>
 #include <tuple>
 #include "node_api.h"
 #include "noden_util.h"
@@ -67,7 +68,8 @@ struct createContextCarrier : carrier {
   cl_platform_id platformId;
   cl_device_id deviceId;
   cl_context context;
-  cl_command_queue commands;
+  uint32_t numQueues;
+  std::vector<cl_command_queue> commandQueues;
   std::string deviceVersion;
 };
 

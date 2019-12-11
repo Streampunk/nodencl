@@ -130,11 +130,11 @@ This object wraps a member that is a promise that resolves to an OpenCL _context
 
 The resolved object contains the native OpenCL structures required to support creating programs, kernels and memory buffers. In this default mode with no options, the first device on the system that is of type GPU is selected.
 
-To select a specific device options can be provided as an argument to the clContext constructor. The options must include a numerical `platformIndex` and `deviceIndex` that are the indexes into the array of platform details, then the `devices` property of each platform, as returned by `getPlatformInfo()`. For example:
+To select a specific device options can be provided as an argument to the clContext constructor. The options must include a numerical `platformIndex` and `deviceIndex` that are the indexes into the array of platform details, then the `devices` property of each platform, as returned by `getPlatformInfo()`. The optional `overlapping` property is used to control overlapping of copies and kernel execution - see below. For example:
 
 ```Javascript
 const context = new addon.clContext(
-  { platformIndex: 1, deviceIndex: 0 });
+  { platformIndex: 1, deviceIndex: 0, overlapping: false });
 ```
 
 An optional second parameter allows the provision of a custom logging object with log, warn and error methods. By default the console object will be used.
@@ -148,11 +148,19 @@ const progPromise = context.createProgram(kernel);
 progPromise.then(program => ..., console.error);
 ```
 
-The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. To explicitly name the function in the kernel code that is the entry point for the kernel (e.g. `square` in the example above), options can be provided as the second argument to `createProgram()`. The `name` property gives the name of the kernel entry point function. For example:
+The object returned by the method contains the native OpenCL structures required to execute the kernel and pass data to and from. To explicitly name the function in the kernel code that is the entry point for the kernel (e.g. `square` in the example above), options can be provided as the second argument to `createProgram()`. The `name` property gives the name of the kernel entry point function, the `globalWorkItems` and `workItemsPerGroup` properties affect the number and size of the kernel executions. 
+
+For example:
 
 ```Javascript
+const workItemsPerGroup = width / 16;
+const globalWorkItems = workItemsPerGroup * height;
 const progPromise = context.createProgram(kernel,
-  { name: 'square' });
+  { name: 'square',
+    globalWorkItems: globalWorkItems,
+    workItemsPerGroup: workItemsPerGroup
+  }
+);
 progPromise.then(program => ..., console.error);
 ```
 
@@ -172,7 +180,7 @@ let output = await context.createBuffer(9000, 'writeonly', 'fine');
 ```Javascript
 let [input, output] = await Promise.all([
   context.createBuffer(65536, 'readonly'),
-  context.createBuffer(9000, 'writeonly', 'fine', 'myOut')
+  context.createBuffer(9000, 'writeonly', 'fine', { width: width, height: height }, 'myOut')
 ]);
 ```
 
@@ -202,9 +210,11 @@ In order to allow normal host access to the buffer for read and write operations
 await input.hostAccess();
 await input.hostAccess('writeonly', srcBuf);
 ```
-The optional first argument describes the intended host access required: '`readwrite`' is the default if no parameter is provided, '`writeonly`' to be able to fill the buffer, '`readonly`' to be able to read from the buffer.
+The optional first argument describes the intended host access required: '`readwrite`' is the default if no parameter is provided, '`writeonly`' to be able to fill the buffer, '`readonly`' to be able to read from the buffer and '`none`' to indicate that hostAccess is no longer required.
 
-The optional second argument allows a source buffer to be passed to the asynchronous thread and be copied into the buffer object, the promise resolving once the copy is complete and the buffer object is ready for processing. The first argument is required when using this option.
+The optional second argument allows a source buffer to be passed to the asynchronous thread and be copied into the buffer object, the promise resolving once the copy is complete. The first argument is required when using this option.
+
+The `buffer.hostAccess()` method initiates transfers between host and device memory when required, for example requesting `readonly` access to a buffer after running a kernel that writes to it will enqueue a copy from device to host memory.
 
 Note that further development of the API is intended to add support for Javascript typed arrays.
 
@@ -216,6 +226,37 @@ To run the kernel having created a program object, created the input and output 
 let execTimings = await program.run({input: input, output: output});
 console.log(JSON.stringify(execTimings, null, 2));
 ```
+
+### Overlapping
+
+When overlapping is enabled at context creation, the `buffer.hostAccess()` and `program.run()` methods each take a second parameter and return a promise that resolves when the requested work has been enqueued, not completed. This allows overlapping of buffer loading, kernel running and buffer unloading.
+
+In order to progress correctly only when each step is complete, it is necessary to wait on the relevant queue to complete, using the `context.waitFinish()` method. This is shown in-line for simplicity:
+
+```Javascript
+// loading - enqueue copy from host to device
+await input.hostAccess('writeonly', context.queue.load, buf); // copies from source buffer to OpenCL host buffer
+await input.hostAccess('none', context.queue.load); // copies from OpenCL host buffer to device buffer
+await context.waitFinish(context.queue.load);
+
+// processing - on-device kernel operations only
+await program.run({input: input, output: output}, context.queue.process);
+await context.waitFinish(context.queue.process);
+
+// unloading - enqueue copy from device to host
+await output.hostAccess('readonly', context.queue.unload);
+await context.waitFinish(context.queue.unload);
+// OpenCL host buffer can now be accessed and copied
+```
+
+The diagram below shows the intended overlapped flow for a sequence of frames, with the asterisks indicating the completion of the `context.waitFinish()` call.
+
+    load queue:   |---Load 0---|*|---Load 1---|*     |---Load 2---|*
+    process queue:               |----Process 0----|*|----Process 1----|*|----Process 2----|*
+    unload queue:                                    |--Unload 0--|*     |--Unload 1--|*     |--Unload 2--|*
+
+The overlapping relies on hardware in the GPU that allows DMA transfers to be setup for host to device and device to host copies. Some GPUs have hardware to allow two copies to proceed at the same time allowing full overlap of load, process and unload.
+
 ### Cleaning up
 
 When finished with the context object, it should be closed in order to ensure all allocations are freed:

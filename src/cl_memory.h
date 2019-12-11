@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <memory>
 #include <string>
+#include <vector>
 #include <array>
 #include "run_params.h"
 
@@ -36,19 +37,21 @@ enum class eSvmType : uint8_t { NONE = 0, COARSE = 1, FINE = 2 };
 class iGpuMemory {
 public:
   virtual ~iGpuMemory() {}
-  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam, iKernelArg::eAccess access, iRunParams *runParams) const = 0;
+  virtual cl_int setKernelParam(cl_kernel kernel, uint32_t paramIndex, bool isImageParam,
+                                iKernelArg::eAccess access, iRunParams *runParams, uint32_t queueNum) = 0;
 };
 
 class iClMemory {
 public:
   virtual ~iClMemory() {}
 
-  static iClMemory *create(cl_context context, cl_command_queue commands, eMemFlags memFlags, eSvmType svmType, 
+  static iClMemory *create(cl_context context, std::vector<cl_command_queue> commandQueues, eMemFlags memFlags, eSvmType svmType, 
                            uint32_t numBytes, deviceInfo *devInfo, const std::array<uint32_t, 3>& imageDims);
 
   virtual bool allocate() = 0;
   virtual std::shared_ptr<iGpuMemory> getGPUMemory() = 0;
-  virtual void setHostAccess(cl_int &error, eMemFlags haFlags) = 0; // map GPU buffer to host
+  virtual cl_int setHostAccess(eMemFlags haFlags, uint32_t queueNum) = 0;
+  virtual cl_int copyFrom(const void *srcBuf, size_t numBytes, uint32_t queueNum) = 0;
   virtual void freeAllocation() = 0;
 
   virtual uint32_t numBytes() const = 0;

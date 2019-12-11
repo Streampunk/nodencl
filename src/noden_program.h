@@ -36,7 +36,6 @@ struct buildCarrier : carrier {
   uint32_t deviceIndex;
   cl_device_id deviceId;
   cl_context context;
-  cl_command_queue commands;
   cl_program program;
   cl_kernel kernel;
   std::string kernelName;

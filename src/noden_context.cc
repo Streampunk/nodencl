@@ -22,6 +22,7 @@
 #include "noden_info.h"
 #include "noden_program.h"
 #include "noden_buffer.h"
+#include <sstream>
 
 void finalizeContext(napi_env env, void* data, void* hint) {
   printf("Context finalizer called.\n");
@@ -42,6 +43,101 @@ void finalizeDevInfo(napi_env env, void* data, void* hint) {
   delete (deviceInfo *)data;
 }
 
+struct waitFinishCarrier : carrier {
+  cl_command_queue commandQueue;
+};
+
+void waitFinishExecute(napi_env env, void* data) {
+  waitFinishCarrier* c = (waitFinishCarrier*) data;
+  cl_int error = clFinish(c->commandQueue);
+  ASYNC_CL_ERROR;
+}
+
+void waitFinishComplete(napi_env env, napi_status asyncStatus, void* data) {
+  waitFinishCarrier* c = (waitFinishCarrier*) data;
+  napi_value result;
+
+  if (asyncStatus != napi_ok) {
+    c->status = asyncStatus;
+    c->errorMsg = "Async wait for finish failed to complete.";
+  }
+  REJECT_STATUS;
+
+  c->status = napi_get_reference_value(env, c->passthru, &result);
+  REJECT_STATUS;
+
+  napi_status status;
+  status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
+
+  tidyCarrier(env, c);
+}
+
+napi_value waitFinish(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value promise;
+  napi_value resource_name;
+  waitFinishCarrier* c = new waitFinishCarrier;
+
+  napi_value args[1];
+  size_t argc = 1;
+  napi_value contextValue;
+  status = napi_get_cb_info(env, info, &argc, args, &contextValue, nullptr);
+  CHECK_STATUS;
+
+  if (!((argc >= 0) && (argc < 2))) {
+    status = napi_throw_error(env, nullptr, "Wrong number of arguments.");
+    return nullptr;
+  }
+
+  uint32_t numQueues;
+  napi_value numQueuesVal;
+  status = napi_get_named_property(env, contextValue, "numQueues", &numQueuesVal);
+  CHECK_STATUS;
+  status = napi_get_value_uint32(env, numQueuesVal, &numQueues);
+  CHECK_STATUS;
+
+  uint32_t queueNum = 0;
+  napi_valuetype t;
+  status = napi_typeof(env, args[0], &t);
+  CHECK_STATUS;
+  if (t == napi_number) {
+    int32_t checkValue;
+    status = napi_get_value_int32(env, args[0], &checkValue);
+    CHECK_STATUS;
+    if (!((checkValue >= 0) && (checkValue < (int32_t)numQueues))) {
+      status = napi_throw_range_error(env, nullptr, "Optional parameter queueNum out of range.");
+      return nullptr;
+    }
+    status = napi_get_value_uint32(env, args[0], &queueNum);
+    CHECK_STATUS;
+  }
+  
+  std::stringstream ss;
+  ss << "commands_" << queueNum;
+  napi_value commandQueueVal;
+  status = napi_get_named_property(env, contextValue, ss.str().c_str(), &commandQueueVal);
+  CHECK_STATUS;
+  status = napi_get_value_external(env, commandQueueVal, (void**)&c->commandQueue);
+  CHECK_STATUS;
+
+  status = napi_create_reference(env, contextValue, 1, &c->passthru);
+  CHECK_STATUS;
+
+  status = napi_create_promise(env, &c->_deferred, &promise);
+  CHECK_STATUS;
+
+  status = napi_create_string_utf8(env, "WaitFinish", NAPI_AUTO_LENGTH, &resource_name);
+  CHECK_STATUS;
+  status = napi_create_async_work(env, NULL, resource_name, waitFinishExecute,
+    waitFinishComplete, c, &c->_request);
+  CHECK_STATUS;
+  status = napi_queue_async_work(env, c->_request);
+  CHECK_STATUS;
+
+  return promise;
+}
+
 void createContextExecute(napi_env env, void* data) {
   createContextCarrier* c = (createContextCarrier*) data;
   cl_int error;
@@ -55,8 +151,13 @@ void createContextExecute(napi_env env, void* data) {
   c->context = clCreateContext(properties, 1, contextDevices, nullptr, nullptr, &error);
   ASYNC_CL_ERROR;
 
-  c->commands = clCreateCommandQueue(c->context, c->deviceId, 0, &error);
-  ASYNC_CL_ERROR;
+  cl_queue_properties props[] = {
+    // CL_QUEUE_PROPERTIES, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_ON_DEVICE | CL_QUEUE_ON_DEVICE_DEFAULT,
+    0 };
+  for (uint32_t i = 0; i < c->numQueues; ++i) {
+    c->commandQueues.push_back(clCreateCommandQueueWithProperties(c->context, c->deviceId, props, &error));
+    ASYNC_CL_ERROR;
+  }
 
   char version[30];
   error = clGetDeviceInfo(c->deviceId, CL_DEVICE_VERSION, 30, version, nullptr);
@@ -87,11 +188,21 @@ void createContextComplete(napi_env env, napi_status asyncStatus, void* data) {
   c->status = napi_set_named_property(env, result, "context", context);
   REJECT_STATUS;
 
-  napi_value commands;
-  c->status = napi_create_external(env, c->commands, finalizeCommands, nullptr, &commands);
+  napi_value numQueuesVal;
+  c->status = napi_create_uint32(env, c->numQueues, &numQueuesVal);
   REJECT_STATUS;
-  c->status = napi_set_named_property(env, result, "commands", commands);
+  c->status = napi_set_named_property(env, result, "numQueues", numQueuesVal);
   REJECT_STATUS;
+
+  napi_value commandQueue;
+  for (uint32_t i = 0; i < c->numQueues; ++i) {
+    c->status = napi_create_external(env, c->commandQueues.at(i), finalizeCommands, nullptr, &commandQueue);
+    REJECT_STATUS;
+    std::stringstream ss;
+    ss << "commands_" << i;
+    c->status = napi_set_named_property(env, result, ss.str().c_str(), commandQueue);
+    REJECT_STATUS;
+  }
 
   deviceInfo *devInfo = new deviceInfo(clVersion(c->deviceVersion));
   napi_value deviceInfoValue;
@@ -112,6 +223,13 @@ void createContextComplete(napi_env env, napi_status asyncStatus, void* data) {
     createBuffer, nullptr, &createBufValue);
   REJECT_STATUS;
   c->status = napi_set_named_property(env, result, "createBuffer", createBufValue);
+  REJECT_STATUS;
+
+  napi_value waitFinishValue;
+  c->status = napi_create_function(env, "waitFinish", NAPI_AUTO_LENGTH,
+    waitFinish, nullptr, &waitFinishValue);
+  REJECT_STATUS;
+  c->status = napi_set_named_property(env, result, "waitFinish", waitFinishValue);
   REJECT_STATUS;
 
   napi_status status;
@@ -235,6 +353,33 @@ napi_value createContext(napi_env env, napi_callback_info info) {
 
   carrier->platformId = platformIds[platformIndex];
   carrier->deviceId = deviceIds[deviceIndex];
+
+  carrier->numQueues = 1;
+  status = napi_has_named_property(env, config, "numQueues", &hasProp);
+  CHECK_STATUS;
+  if (hasProp) {
+    napi_value numQueuesValue;
+    status = napi_get_named_property(env, config, "numQueues", &numQueuesValue);
+    CHECK_STATUS;
+
+    status = napi_typeof(env, numQueuesValue, &t);
+    CHECK_STATUS;
+    if (t != napi_number) {
+      status = napi_throw_type_error(env, nullptr, "Configuration parameter numQueues must be a number.");
+      return nullptr;
+    }
+
+    int32_t checkValue;
+    status = napi_get_value_int32(env, numQueuesValue, &checkValue);
+    CHECK_STATUS;
+    if (!((checkValue > 0) && (checkValue <= 3))) {
+      status = napi_throw_range_error(env, nullptr, "Optional configuration parameter numQueues must be between 1 and 3.");
+      return nullptr;
+    }
+
+    status = napi_get_value_uint32(env, numQueuesValue, &carrier->numQueues);
+    CHECK_STATUS;
+  }
 
   cl_ulong svmCaps;
   error = clGetDeviceInfo(carrier->deviceId, CL_DEVICE_SVM_CAPABILITIES, sizeof(cl_ulong), &svmCaps, nullptr);
