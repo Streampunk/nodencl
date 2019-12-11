@@ -16,6 +16,7 @@
 #include "noden_buffer.h"
 #include "noden_util.h"
 #include "cl_memory.h"
+#include <cstring>
 #include <vector>
 #include <sstream>
 
@@ -102,7 +103,7 @@ napi_value hostAccess(napi_env env, napi_callback_info info) {
   status = napi_get_value_string_utf8(env, hostDirValue, haflag, 10, nullptr);
   CHECK_STATUS;
   if ((strcmp(haflag, "readwrite") != 0) && (strcmp(haflag, "writeonly") != 0) && (strcmp(haflag, "readonly") != 0) && (strcmp(haflag, "none") != 0)) {
-    status = napi_throw_error(env, nullptr, "Host access direction must be one of 'none, 'readwrite', 'writeonly' or 'readonly'.");
+    status = napi_throw_error(env, nullptr, "Host access direction must be one of 'none', 'readwrite', 'writeonly' or 'readonly'.");
     delete c;
     return nullptr;
   }

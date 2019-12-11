@@ -85,7 +85,7 @@ napi_value waitFinish(napi_env env, napi_callback_info info) {
   status = napi_get_cb_info(env, info, &argc, args, &contextValue, nullptr);
   CHECK_STATUS;
 
-  if (!((argc >= 0) && (argc < 2))) {
+  if (argc >= 2) {
     status = napi_throw_error(env, nullptr, "Wrong number of arguments.");
     return nullptr;
   }
@@ -112,7 +112,7 @@ napi_value waitFinish(napi_env env, napi_callback_info info) {
     status = napi_get_value_uint32(env, args[0], &queueNum);
     CHECK_STATUS;
   }
-  
+
   std::stringstream ss;
   ss << "commands_" << queueNum;
   napi_value commandQueueVal;
