@@ -1,12 +1,19 @@
 {
   "name": "nodencl",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Experimental library for executing Open-CL kernels over Node.JS buffers.",
   "main": "index.js",
   "scripts": {
     "lint": "eslint **/*.js",
     "test": "tape test/*Spec.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Streampunk/nodencl.git"
+  },
+  "keywords": [
+    "OpenCL"
+  ],
   "author": "Streampunk Media <furnace@streampunk.media> (http://www.streampunk.media)",
   "license": "Apache-2.0",
   "gypfile": true,
@@ -15,7 +22,7 @@
     "segfault-handler": "^1.3.0"
   },
   "devDependencies": {
-    "eslint": "^6.7.2",
-    "tape": "^4.11.0"
+    "eslint": "^6.8.0",
+    "tape": "^4.12.1"
   }
 }
