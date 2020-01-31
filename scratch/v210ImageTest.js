@@ -79,8 +79,8 @@ async function noden() {
   const v210Src = await context.createBuffer(numBytesV210, 'readonly', 'coarse');
 
   const numBytesRGBA = width * height * 4 * 4;
-  const rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
-  const imageDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
+  const rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  const imageDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
   
   const v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse');
 
