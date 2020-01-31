@@ -179,7 +179,7 @@ cl_int getDeviceIds(cl_int platformId, std::vector<cl_device_id> &ids) {
   return CL_SUCCESS;
 }
 
-napi_status getPlatformParam(napi_env env, cl_platform_id platformId,
+napi_status getPlatformParamString(napi_env env, cl_platform_id platformId,
   cl_platform_info param, napi_value* result) {
 
   cl_int error;
@@ -196,6 +196,20 @@ napi_status getPlatformParam(napi_env env, cl_platform_id platformId,
   status = napi_create_string_utf8(env, paramString, NAPI_AUTO_LENGTH, result);
   free(paramString);
   return status;
+}
+
+napi_status getPlatformParamUlong(napi_env env, cl_platform_id platformId,
+  cl_platform_info param, napi_value* result) {
+
+    cl_int error;
+    napi_status status;
+    cl_ulong paramLong;
+    error = clGetPlatformInfo(platformId, param, sizeof(cl_ulong), &paramLong, 0);
+    INVALID_CHECK;
+    THROW_CL_ERROR;
+
+    status = napi_create_int64(env, (int64_t) paramLong, result);
+    return status;
 }
 
 napi_status getDeviceParamString(napi_env env, cl_device_id deviceId,
@@ -437,29 +451,34 @@ napi_value getPlatformInfo(napi_env env, napi_callback_info info) {
     CHECK_STATUS;
 
     napi_value param;
-    status = getPlatformParam(env, platformIds[platformId], CL_PLATFORM_PROFILE, &param);
+    status = getPlatformParamString(env, platformIds[platformId], CL_PLATFORM_PROFILE, &param);
     CHECK_STATUS;
     status = napi_set_named_property(env, result, "profile", param);
     CHECK_STATUS;
 
-    status = getPlatformParam(env, platformIds[platformId], CL_PLATFORM_VERSION, &param);
+    status = getPlatformParamString(env, platformIds[platformId], CL_PLATFORM_VERSION, &param);
     CHECK_STATUS;
     status = napi_set_named_property(env, result, "version", param);
     CHECK_STATUS;
 
-    status = getPlatformParam(env, platformIds[platformId], CL_PLATFORM_NAME, &param);
+    status = getPlatformParamString(env, platformIds[platformId], CL_PLATFORM_NAME, &param);
     CHECK_STATUS;
     status = napi_set_named_property(env, result, "name", param);
     CHECK_STATUS;
 
-    status = getPlatformParam(env, platformIds[platformId], CL_PLATFORM_VENDOR, &param);
+    status = getPlatformParamString(env, platformIds[platformId], CL_PLATFORM_VENDOR, &param);
     CHECK_STATUS;
     status = napi_set_named_property(env, result, "vendor", param);
     CHECK_STATUS;
 
-    status = getPlatformParam(env, platformIds[platformId], CL_PLATFORM_EXTENSIONS, &param);
+    status = getPlatformParamString(env, platformIds[platformId], CL_PLATFORM_EXTENSIONS, &param);
     CHECK_STATUS;
     status = napi_set_named_property(env, result, "extensions", param);
+    CHECK_STATUS;
+
+    status = getPlatformParamUlong(env, platformIds[platformId], CL_PLATFORM_HOST_TIMER_RESOLUTION, &param);
+    CHECK_STATUS;
+    status = napi_set_named_property(env, result, "hostTimerResolution", param);
     CHECK_STATUS;
 
     // For extensions. Include "cl_ext,h" - out of scope for now

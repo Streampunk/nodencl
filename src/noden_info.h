@@ -59,6 +59,7 @@ const deviceParam deviceParams[] = {
   { CL_DEVICE_AVAILABLE, "available", getDeviceParamBool },
   { CL_DEVICE_ADDRESS_BITS, "addressBits", getDeviceParamUint },
   { CL_DEVICE_BUILT_IN_KERNELS, "builtInKernels", getDeviceParamString },
+  { CL_DEVICE_COMPILER_AVAILABLE, "compilerAvailable", getDeviceParamBool },
   { CL_DEVICE_ENDIAN_LITTLE, "endianLittle", getDeviceParamBool },
   { CL_DEVICE_ERROR_CORRECTION_SUPPORT, "errorCorrectionSupport", getDeviceParamBool },
   { CL_DEVICE_EXTENSIONS, "extensions", getDeviceParamString },
@@ -76,7 +77,7 @@ const deviceParam deviceParams[] = {
   { CL_DEVICE_IMAGE_MAX_BUFFER_SIZE, "imageMaxBufferSize", getDeviceParamSizet },
   { CL_DEVICE_IMAGE_PITCH_ALIGNMENT, "imagePitchAlignment", getDeviceParamUint },
   { CL_DEVICE_IMAGE_SUPPORT, "imageSupport", getDeviceParamBool },
-  { CL_DEVICE_LINKER_AVAILABLE, "linkedAvailable", getDeviceParamBool },
+  { CL_DEVICE_LINKER_AVAILABLE, "linkerAvailable", getDeviceParamBool },
   { CL_DEVICE_LOCAL_MEM_SIZE, "localMemSize", getDeviceParamUlong },
   { CL_DEVICE_MAX_CLOCK_FREQUENCY, "maxClockFrequency", getDeviceParamUint },
   { CL_DEVICE_MAX_COMPUTE_UNITS, "maxComputeUnits", getDeviceParamUint },
@@ -147,7 +148,7 @@ const deviceParam deviceParams[] = {
 - CL_DEVICE_PARTITION_TYPE - an array of enums - relates to subdevices - complex
 - CL_DEVICE_PLATFORM - returns a pointer - don't want to expose in JS land
 */
-const uint32_t deviceParamCount = 142 - 58;
+const uint32_t deviceParamCount = 143 - 58;
 
 // Field not supported on pre 2.0
 #define INVALID_CHECK if (error == CL_INVALID_VALUE) {\
