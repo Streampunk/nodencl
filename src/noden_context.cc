@@ -63,7 +63,7 @@ void waitFinishComplete(napi_env env, napi_status asyncStatus, void* data) {
   }
   REJECT_STATUS;
 
-  c->status = napi_get_reference_value(env, c->passthru, &result);
+  c->status = napi_get_undefined(env, &result);
   REJECT_STATUS;
 
   napi_status status;
