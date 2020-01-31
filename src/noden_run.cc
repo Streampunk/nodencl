@@ -293,7 +293,7 @@ napi_value run(napi_env env, napi_callback_info info) {
     status = napi_get_value_uint32(env, args[1], &c->queueNum);
     CHECK_STATUS;
   } else {
-    printf("run queueNum parameter not provided - defaulting to 0\n");
+    if (numQueues > 1) printf("run queueNum parameter not provided - defaulting to 0\n");
     c->queueNum = 0;
   }
 
