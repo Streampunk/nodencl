@@ -12,6 +12,8 @@
 	See the License for the specific language governing permissions and
 	limitations under the License.
 */
+
+import { OpenCLPlatform } from "./types/Platform"
 export * from "./types/Platform"
 
 export type BufDir = 'readonly' | 'writeonly' | 'readwrite'
