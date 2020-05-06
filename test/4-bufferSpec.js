@@ -23,6 +23,7 @@ function createContext(description, cb) {
   tape(description, async t => {
     const clContext = new addon.clContext(properties);
     try {
+      await clContext.initialise();
       await cb(t, clContext);
       clContext.close(t.end);
     } catch (err) {

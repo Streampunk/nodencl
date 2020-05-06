@@ -70,7 +70,7 @@ interface OpenCLBufferFunctions {
 	 * copied into the buffer object. Requires that the bufDir is not `readonly`.
 	 * @returns a promise that resolves when any source copy is complete and host access is available.
 	 */
-	hostAccess(bufDir: BufDir, sourceBuf: Buffer): Promise<undefined>
+	hostAccess(bufDir: BufDir | 'none', sourceBuf: Buffer): Promise<undefined>
 	/**
 	 * Allow normal [host access](https://github.com/Streampunk/nodencl#host-access-to-data-buffers) to the buffer for read and write operations in Javascript,
 	 * with [overlapping](https://github.com/Streampunk/nodencl#overlapping) support.
@@ -80,12 +80,28 @@ interface OpenCLBufferFunctions {
 	 * @param sourceBuf an optional Buffer object to be used as source data when the bufDir is not readonly
 	 * @returns a promise that resolves when any source copy is complete and host access is available.
 	 */
-	hostAccess(bufDir: BufDir, queueNum: number, sourceBuf?: Buffer): Promise<undefined>
+	hostAccess(bufDir: BufDir | 'none', queueNum: number, sourceBuf?: Buffer): Promise<undefined>
 	/** Free any allocated OpenCL memory associated with this OpenCLBuffer object */
 	freeAllocation(): undefined
+
+	/** Increment the reference count of this OpenCLBuffer object to keep it in the buffer cache */
+	addRef() : void
+	/**
+	 * Decrement the reference count of this OpenCLBuffer object.
+	 * If the reference count becomes zero allow the allocation to be re-used
+	 */
+	release() : void
 }
 /** OpenCLBuffer object is a NodeJS Buffer object with extra parameters and functions */
 export type OpenCLBuffer = Buffer & OpenCLBufferFunctions & OpenCLBufferInternals
+
+/**
+ * Parameters for the Program run function. Parameter names must match the parameter names of the chosen
+ * kernel program
+ */
+export interface KernelParams {
+	[key: string]: unknown
+}
 
 /**
  * Timings object returned by the Program run function. These timings are only associated with work
@@ -112,12 +128,13 @@ export interface OpenCLProgram {
 	readonly buildTime: number
   /**
 	 * [Run](https://github.com/Streampunk/nodencl#execute-the-kernel) the program with the provided parameters
+	 * Prefer clContext.runProgram if using the buffer cache
 	 * @param params an object with keys that match the selected kernel parameter names and
 	 * data types that match the selected kernel parameters
 	 * @param queueNum the CommandQueue to be used to run the program. Typically will be `context.queue.process`
 	 * @returns Promise that resolves to a RunTimings object on success
 	 */
-	run(params: { [key: string]: any }, queueNum?: number): Promise<RunTimings>
+	run(params: KernelParams, queueNum?: number): Promise<RunTimings>
 }
 
 /** Object to hold a context for a selected OpenCL platform and device */
@@ -133,7 +150,7 @@ export class clContext {
 	 * @param logger Allows override of the default console.log etc functions
 	 */
 	constructor(
-		params: { 
+		params: {
 			/** Select the OpenCL platform for this context */
 			platformIndex: number
 			/** Select the OpenCL device for this context and platform */
@@ -145,17 +162,24 @@ export class clContext {
 	)
 
 	// Internal parameters
+	readonly params: { platformIndex: number, deviceIndex: number, overlapping: boolean }
 	readonly logger: { log: Function, warn: Function, error: Function }
 	readonly buffers: ReadonlyArray<ContextBuffer>
 	readonly bufIndex: number
 	readonly queue: { load: number, process: number, unload: number }
-	readonly context: Promise<{	svmCaps: number, platformIndex: number, numQueues: number	}>
+	readonly context: {	svmCaps: number, platformIndex: number, deviceIndex: number, numQueues: number }
+
+	/**
+	 * Initialise the context object on the hardware
+	 * @returns Promise that resolves to void when the context is initialised
+	 */
+  initialise(): Promise<void>
 
 	/**
 	 * Get all the OpenCL details for the selected platform for this context
 	 * @returns Promise that resolves to an OpenCLPlatform object describing the details of the selected platform
 	 */
-	getPlatformInfo(): Promise<OpenCLPlatform>
+	getPlatformInfo(): OpenCLPlatform
 
   /**
 	 * Create an OpenCL [program](https://github.com/Streampunk/nodencl#creating-a-program) from a string containing an OpenCL kernel
@@ -181,7 +205,7 @@ export class clContext {
 	 * @param bufDir The data direction for the buffer with respect to execution of kernel functions
 	 * @param bufType The type of Shared Virtual Memory to be used for the buffer
 	 * @param imageDims The image dimensions to be used if this buffer is to be used as a kernel image type parameter
-	 * @param owner Name that can be helpful in logging and enables resource management
+	 * @param owner Name that can be helpful in logging and enables resource management via a cache
 	 * @returns Promise that resolves to an OpenCLBuffer object holding OpenCL memory allocations
 	 */
 	createBuffer(
@@ -203,16 +227,19 @@ export class clContext {
 
 	/**
 	 * [Run](https://github.com/Streampunk/nodencl#execute-the-kernel) the program with the provided parameters
+	 * Prefer this function rather than program.run if using the buffer cache
 	 * @param program The OpenCLProgram object that holds the compiled kernel
 	 * @param params an object with keys that match the selected kernel parameter names and
 	 * data types that match the selected kernel parameters
+	 * @param queueNum The queue to run the command on
 	 * @returns Promise that resolves to a RunTimings object on success
-	 * 
+	 *
 	 * Note: This function does not support overlapping - use the program.run function if required
 	 */
 	runProgram(
 		program: OpenCLProgram,
-		params: { [key: string]: any }
+		params: KernelParams,
+		queueNum?: number
 	): Promise<RunTimings>
 
 	/**
@@ -227,5 +254,3 @@ export class clContext {
 	 */
 	close(done: Function): null
 }
-
-export as namespace NodenCL

@@ -50,21 +50,29 @@ function releaseReference(buffer) {
 }
 
 function clContext(params, logger) {
+  this.params = params;
   this.logger = logger || { log: console.log, warn: console.warn, error: console.error };
   this.buffers = [];
   this.bufIndex = 0;
   this.queue = { load: 0, process: params.overlapping ? 1 : 0, unload: params.overlapping ? 2 : 0 };
-
-  this.getPlatformInfo = async () => {
-    const c = await this.context;
-    return addon.getPlatformInfo()[c.platformIndex];
-  };
+  this.context = undefined;
 
   this.logBuffers = () => this.buffers.forEach(el => 
     this.logger.log(`${el.index}: ${el.owner} ${el.length} bytes ${el.reserved?'reserved':'available'}`));
 
-  this.context = createContext(params);
+  this.checkContext = () => {
+    if (undefined === this.context) throw new Error('clContext must be initialised');
+  };
+
+  this.getPlatformInfo = () => {
+    this.checkContext();    
+    return addon.getPlatformInfo()[this.context.platformIndex];
+  };
 }
+
+clContext.prototype.initialise = async function() {
+  this.context = await createContext(this.params);
+};
 
 clContext.prototype.checkAlloc = async function(cb) {
   let result;
@@ -89,28 +97,30 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
   if (!imageDims) imageDims = {};
   const buf = this.buffers.find(el => 
     !el.reserved && (el.length === numBytes) && (el.bufDir === bufDir) &&
-                    (el.bufType === bufType) && (el.imageDims === imageDims));
+                    (el.bufType === bufType));
   if (buf) {
-    this.logger.log(`reuse ${owner}: ${buf.owner} ${numBytes} bytes`);
+    // this.logger.log(`reuse ${owner}: ${buf.owner} ${numBytes} bytes`);
     buf.reserved = true;
     buf.owner = owner;
-    buf.refs = 0;
+    buf.refs = 1;
     return buf;
-  } else return this.context
-    .then(c => this.checkAlloc(() => c.createBuffer(numBytes, bufDir, bufType, imageDims)))
-    .then(buf => {
-      buf.reserved = true;
-      buf.owner = owner;
-      buf.index = this.bufIndex++;
-      buf.bufDir = bufDir;
-      buf.bufType = bufType;
-      buf.imageDims = imageDims;
-      buf.refs = 0;
-      buf.addRef = () => addReference(buf, this.buffers);
-      buf.release = () => releaseReference(buf);
-      if (owner) this.buffers.push(buf);
-      return buf;
-    });
+  } else return this.checkAlloc(() => {
+    this.checkContext();
+    return this.context.createBuffer(numBytes, bufDir, bufType, imageDims)
+      .then(buf => {
+        buf.reserved = true;
+        buf.owner = owner;
+        buf.index = this.bufIndex++;
+        buf.bufDir = bufDir;
+        buf.bufType = bufType;
+        buf.imageDims = imageDims;
+        buf.refs = 1;
+        buf.addRef = () => addReference(buf, this.buffers);
+        buf.release = () => releaseReference(buf);
+        if (owner) this.buffers.push(buf);
+        return buf;
+      });
+  });
 };
 
 clContext.prototype.releaseBuffers = function(owner) {
@@ -121,17 +131,17 @@ clContext.prototype.releaseBuffers = function(owner) {
 };
 
 clContext.prototype.createProgram = async function(kernel, options) {
-  return this.context
-    .then(c => c.createProgram(kernel, options));
+  this.checkContext();
+  return this.context.createProgram(kernel, options);
 };
 
-clContext.prototype.runProgram = async function(program, params) {
-  return await this.checkAlloc(() => program.run(params));
+clContext.prototype.runProgram = async function(program, params, owner) {
+  return await this.checkAlloc(() => program.run(params, owner));
 };
 
 clContext.prototype.waitFinish = async function(queueNum) {
-  return this.context
-    .then(c => c.waitFinish(queueNum));
+  this.checkContext();
+  return this.context.waitFinish(queueNum);
 };
 
 clContext.prototype.close = function(done) {

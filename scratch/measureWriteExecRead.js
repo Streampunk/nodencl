@@ -30,6 +30,7 @@ async function noden() {
     platformIndex: platformIndex, 
     deviceIndex: deviceIndex
   });
+  await context.initialise();
 
   let program = await context.createProgram(kernel, {globalWorkItems: +process.argv[2]});
   let [i, o] = await Promise.all([
