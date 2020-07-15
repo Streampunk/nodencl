@@ -102,6 +102,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
     // this.logger.log(`reuse ${owner}: ${buf.owner} ${numBytes} bytes`);
     buf.reserved = true;
     buf.owner = owner;
+    buf.timestamp = 0;
     buf.refs = 1;
     return buf;
   } else return this.checkAlloc(() => {
@@ -114,6 +115,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
         buf.bufDir = bufDir;
         buf.bufType = bufType;
         buf.imageDims = imageDims;
+        buf.timestamp = 0;
         buf.refs = 1;
         buf.addRef = () => addReference(buf, this.buffers);
         buf.release = () => releaseReference(buf);

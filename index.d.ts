@@ -22,11 +22,11 @@ export type ImageDims = { width: number, height: number, depth?: number }
 
 /** Internal structure for managing allocated buffers */
 export interface ContextBuffer {
-  /** The data direction for the buffer with respect to execution of kernel functions */
+	/** The data direction for the buffer with respect to execution of kernel functions */
 	readonly bufDir: BufDir
-  /** The type of Shared Virtual Memory in use for the buffer */
+	/** The type of Shared Virtual Memory in use for the buffer */
 	readonly bufType: BufSVMType
-  /** The dimension to be used if the buffer is to be used as an image type for a kernel */
+	/** The dimension to be used if the buffer is to be used as an image type for a kernel */
 	readonly imageDims?: ImageDims
 
 	// Internal parameters
@@ -48,6 +48,8 @@ interface OpenCLBufferInternals {
 	readonly numBytes: number
   /** The time taken to perform the allocation of OpenCL memory for this OpenCLBuffer */
 	readonly creationTime: number
+	/** Field to carry a frame timestamp */
+	timestamp: number
 
 	// Internal parameters
 	readonly numQueues: number
