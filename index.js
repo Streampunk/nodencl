@@ -149,26 +149,30 @@ clContext.prototype.waitFinish = async function(queueNum) {
   return this.context.waitFinish(queueNum);
 };
 
-clContext.prototype.close = function(done) {
-  const i = setInterval(() => {
-    if (0 === this.buffers.length) {
-      this.logger.log('All OpenCL allocations have been released');
+clContext.prototype.close = async function(done) {
+  return new Promise((resolve) => {
+    const i = setInterval(() => {
+      if (0 === this.buffers.length) {
+        this.logger.log('All OpenCL allocations have been released');
+        clearInterval(this.bufLog);
+        clearInterval(i);
+        clearInterval(t);
+        this.context = null;
+        if (done) done();
+        resolve();
+      }
+    }, 20);
+    const t = setTimeout(() => {
       clearInterval(this.bufLog);
       clearInterval(i);
-      clearInterval(t);
+      this.logger.warn('Timed out waiting for release of OpenCL allocations');
+      this.buffers = this.buffers.map(el => el.freeAllocation());
+      this.buffers.length = 0;
       this.context = null;
       if (done) done();
-    }
-  }, 20);
-  const t = setTimeout(() => {
-    clearInterval(this.bufLog);
-    clearInterval(i);
-    this.logger.warn('Timed out waiting for release of OpenCL allocations');
-    this.buffers = this.buffers.map(el => el.freeAllocation());
-    this.buffers.length = 0;
-    this.context = null;
-    if (done) done();
-  }, 1000);
+      resolve();
+    }, 1000);
+  });
 };
 
 module.exports = {

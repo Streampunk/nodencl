@@ -261,7 +261,7 @@ The overlapping relies on hardware in the GPU that allows DMA transfers to be se
 
 When finished with the context object, it should be closed in order to ensure all allocations are freed:
 ```Javascript
-clContext.close(done => {  });
+await clContext.close(done => {  });
 ```
 The callback will be called when all allocations have been freed. If owner names and the `releaseBuffers` method detailed above are not used then a warning message will be emitted that a timeout has been used to free the allocations.
 

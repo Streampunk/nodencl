@@ -25,7 +25,7 @@ function createContext(description, cb) {
     try {
       await clContext.initialise();
       await cb(t, clContext);
-      clContext.close(t.end);
+      await clContext.close(t.end);
     } catch (err) {
       t.fail(err);
       t.end();
@@ -35,18 +35,31 @@ function createContext(description, cb) {
 
 const numBytes = 65536;
 const bufDirs = [ 'readonly', 'writeonly', 'readwrite' ];
-const svmTypes = [ 'none', 'coarse', 'fine' ];
+const svmTypes = [];
+
+const platformInfo = addon.getPlatformInfo();
+svmTypes.push([]);
+platformInfo.forEach((platform, pi) => {
+  svmTypes[pi].push([]);
+  platform.devices.forEach((device, di) => {
+    svmTypes[pi][di].push('none');
+    if (device.svmCapabilities.includes('CL_DEVICE_SVM_COARSE_GRAIN_BUFFER'))
+      svmTypes[pi][di].push('coarse');
+    if (device.svmCapabilities.includes('CL_DEVICE_SVM_FINE_GRAIN_BUFFER'))
+      svmTypes[pi][di].push('fine');
+  });
+});
+
 for (let d=0; d<bufDirs.length; ++d) {
-  for (let t=0; t<svmTypes.length; ++t) {
+  svmTypes[pi][di].forEach((svm) => {
     const dir = bufDirs[d];
-    const svm = svmTypes[t];
     createContext(`Create OpenCL buffer direction ${dir} SVM type ${svm}`, async (t, clContext) => {
       const testBuffer = await clContext.createBuffer(numBytes, dir, svm);
       t.ok(Buffer.isBuffer(testBuffer), 'buffer created ok');
       t.equal(testBuffer.numBytes, numBytes, 'buffer has correct size');
       t.ok(Object.prototype.hasOwnProperty.call(testBuffer, 'hostAccess'), 'has hostAccess function');
     });
-  }
+  });
 }
 
 createContext('Create buffer with negative size', async (t, clContext) => {

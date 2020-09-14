@@ -25,6 +25,7 @@ tape('Get platform info', t => {
     t.ok(Object.prototype.hasOwnProperty.call(p, 'name'), `platform ${pi} has a name`);
     t.ok(Object.prototype.hasOwnProperty.call(p, 'devices'), `platform ${pi} has devices`);
     p.devices.forEach((d, di) => {
+      console.log(d);
       t.ok(Object.prototype.hasOwnProperty.call(d, 'vendor'), `platform ${pi}, device ${di} has a vendor`);
       t.ok(Object.prototype.hasOwnProperty.call(d, 'version'), `platform ${pi}, device ${di} has a version`);
       t.ok(Object.prototype.hasOwnProperty.call(d, 'name'), `platform ${pi}, device ${di} has a name`);

@@ -50,7 +50,7 @@ function createContext(description, properties, cb) {
     try {
       await clContext.initialise();
       await cb(t, clContext);
-      clContext.close(t.end);
+      await clContext.close(t.end);
     } catch (err) {
       t.fail(err);
       t.end();

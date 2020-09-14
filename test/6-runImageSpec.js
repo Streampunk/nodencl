@@ -25,7 +25,7 @@ function createContext(description, cb) {
     try {
       await clContext.initialise();
       await cb(t, clContext);
-      clContext.close(t.end);
+      await clContext.close(t.end);
     } catch (err) {
       t.fail(err);
       t.end();
@@ -61,11 +61,24 @@ const createProgram = function(clContext, kernel) {
 };
 
 const bufDirs = [ ['readonly', 'writeonly'], ['readonly', 'readwrite'], ['readwrite', 'writeonly'], ['readwrite', 'readwrite'] ];
-const svmTypes = [ 'none', 'coarse', 'fine' ];
+const svmTypes = [];
+
+const platformInfo = addon.getPlatformInfo();
+svmTypes.push([]);
+platformInfo.forEach((platform, pi) => {
+  svmTypes[pi].push([]);
+  platform.devices.forEach((device, di) => {
+    svmTypes[pi][di].push('none');
+    if (device.svmCapabilities.includes('CL_DEVICE_SVM_COARSE_GRAIN_BUFFER'))
+      svmTypes[pi][di].push('coarse');
+    if (device.svmCapabilities.includes('CL_DEVICE_SVM_FINE_GRAIN_BUFFER'))
+      svmTypes[pi][di].push('fine');
+  });
+});
+
 for (let d=0; d<bufDirs.length; ++d) {
-  for (let t=0; t<svmTypes.length; ++t) {
+  svmTypes[pi][di].forEach((svm) => {
     const dirs = bufDirs[d];
-    const svm = svmTypes[t];
     createContext(`Run OpenCL program with image parameters, ${dirs[0]}->${dirs[1]}, SVM type ${svm}`, async (t, clContext) => {
       const testProgram = await createProgram(clContext, testKernel);
       const srcBuf = Buffer.alloc(numBytes);
@@ -80,5 +93,5 @@ for (let d=0; d<bufDirs.length; ++d) {
       await bufOut.hostAccess('readonly');
       t.deepEqual(bufOut, srcBuf, 'program produced expected result');
     });
-  }
+  });
 }
