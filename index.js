@@ -99,7 +99,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
     !el.reserved && (el.length === numBytes) && (el.bufDir === bufDir) &&
                     (el.bufType === bufType));
   if (buf) {
-    // this.logger.log(`reuse ${owner}: ${buf.owner} ${numBytes} bytes`);
+    // this.logger.log(`reuse ${buf.index}: ${owner} <- ${buf.owner} ${numBytes} bytes`);
     buf.reserved = true;
     buf.owner = owner;
     buf.timestamp = 0;
@@ -107,11 +107,14 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
     return buf;
   } else return this.checkAlloc(() => {
     this.checkContext();
+    // this.logger.log(`new ${this.bufIndex}: ${owner} ${numBytes} bytes`);
+    const bufIndex = this.bufIndex;
+    this.bufIndex++;
     return this.context.createBuffer(numBytes, bufDir, bufType, imageDims)
       .then(buf => {
         buf.reserved = true;
         buf.owner = owner;
-        buf.index = this.bufIndex++;
+        buf.index = bufIndex;
         buf.bufDir = bufDir;
         buf.bufType = bufType;
         buf.imageDims = imageDims;

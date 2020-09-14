@@ -136,7 +136,7 @@ public:
         }
       }
 
-      bool blockingMap = mCommandQueues.size() > 1 ? CL_NON_BLOCKING : CL_BLOCKING;
+      cl_bool blockingMap = mCommandQueues.size() > 1 ? CL_NON_BLOCKING : CL_BLOCKING;
       if (eSvmType::NONE == mSvmType) {
         void *hostBuf = clEnqueueMapBuffer(getCommandQueue(queueNum), mPinnedMem, blockingMap, mapFlags, 0, mNumBytes, 0, nullptr, nullptr, &error);
         PASS_CL_ERROR;
