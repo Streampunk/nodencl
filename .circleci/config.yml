@@ -15,15 +15,15 @@ jobs:
     - restore_cache:
         keys:
         # This branch if available
-        - v2-dep-{{ .Branch }}-
+        - v3-dep-{{ .Branch }}-
         # Default branch if not
-        - v2-dep-master-
+        - v3-dep-master-
         # Any branch if there are none on the default branch - this should be unnecessary if you have your default branch configured correctly
-        - v2-dep-
+        - v3-dep-
     - run: npm install tap-xunit
     - run: npm install
     - save_cache:
-        key: v2-dep-{{ .Branch }}-{{ epoch }}
+        key: v3-dep-{{ .Branch }}-{{ epoch }}
         paths:
         - ./node_modules
     - run: echo 'export PATH="~/Streampunk/nodencl/node_modules/.bin:$PATH"' >> $BASH_ENV
