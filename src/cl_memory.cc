@@ -127,7 +127,7 @@ public:
       cl_map_flags mapFlags = (eMemFlags::READWRITE == haFlags) ? CL_MAP_WRITE | CL_MAP_READ :
                               (eMemFlags::WRITEONLY == haFlags) ? CL_MAP_WRITE_INVALIDATE_REGION :
                               CL_MAP_READ;
-      if (mImageMem && (mDevInfo->oclVer < clVersion(2,0))) {
+      if (mImageMem) { // && (mDevInfo->oclVer < clVersion(2,0))) {
         if (eMemFlags::WRITEONLY == haFlags)
           mMemLatest = eMemLatest::BUFFER;
         else {
@@ -295,19 +295,19 @@ private:
         clImageDesc.image_width = mImageDims[0];
         clImageDesc.image_height = runParams->numDims() > 1 ? mImageDims[1] : 1;
         clImageDesc.image_depth = runParams->numDims() > 2 ? mImageDims[2] : 1;
-        if (mDevInfo->oclVer >= clVersion(2,0))
-          clImageDesc.mem_object = mPinnedMem;
+        // if (mDevInfo->oclVer >= clVersion(2,0))
+        //   clImageDesc.mem_object = mPinnedMem;
 
         cl_mem_flags clMemFlags = (eMemFlags::READONLY == mMemFlags) ? CL_MEM_READ_ONLY :
                                   (eMemFlags::WRITEONLY == mMemFlags) ? CL_MEM_WRITE_ONLY :
                                   CL_MEM_READ_WRITE;
-        mImageMem = clCreateImage(mContext, clMemFlags, &clImageFormat, &clImageDesc, nullptr, &error);
+        mImageMem = clCreateImage(mContext, clMemFlags | CL_MEM_HOST_NO_ACCESS, &clImageFormat, &clImageDesc, nullptr, &error);
         PASS_CL_ERROR;
 
         kernelMem = &mImageMem;
       }
 
-      if (mDevInfo->oclVer < clVersion(2,0)) {
+      // if (mDevInfo->oclVer < clVersion(2,0)) {
         if (iKernelArg::eAccess::WRITEONLY == access)
           mMemLatest = eMemLatest::IMAGE;
         else if (eMemLatest::BUFFER == mMemLatest) {
@@ -318,10 +318,10 @@ private:
           error = clEnqueueCopyBufferToImage(getCommandQueue(queueNum), mPinnedMem, mImageMem, 0, origin, region, 0, nullptr, nullptr);
           PASS_CL_ERROR;
         }
-      }
+      // }
     } else if (mImageMem) {
       // copy back from image if required, leave image allocation allocated
-      if ((mDevInfo->oclVer < clVersion(2,0)) && (eMemLatest::IMAGE == mMemLatest)) {
+      if (/*(mDevInfo->oclVer < clVersion(2,0)) &&*/ (eMemLatest::IMAGE == mMemLatest)) {
         error = copyImageToBuffer(queueNum);
         PASS_CL_ERROR;
       }

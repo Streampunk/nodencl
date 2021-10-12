@@ -13,11 +13,6 @@
   limitations under the License.
 */
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
 #include "noden_context.h"
 #include "noden_info.h"
 #include "noden_program.h"
@@ -372,8 +367,8 @@ napi_value createContext(napi_env env, napi_callback_info info) {
     int32_t checkValue;
     status = napi_get_value_int32(env, numQueuesValue, &checkValue);
     CHECK_STATUS;
-    if (!((checkValue > 0) && (checkValue <= 3))) {
-      status = napi_throw_range_error(env, nullptr, "Optional configuration parameter numQueues must be between 1 and 3.");
+    if (checkValue <= 0) {
+      status = napi_throw_range_error(env, nullptr, "Optional configuration parameter numQueues must be greater than 0.");
       return nullptr;
     }
 

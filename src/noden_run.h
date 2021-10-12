@@ -16,11 +16,7 @@
 #ifndef NODEN_RUN_H
 #define NODEN_RUN_H
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
+#include "cl_include.h"
 #include <memory>
 #include <string>
 #include <vector>

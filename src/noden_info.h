@@ -16,11 +16,7 @@
 #ifndef NODEN_INFO_H
 #define NODEN_INFO_H
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
+#include "cl_include.h"
 #include <vector>
 #include "node_api.h"
 

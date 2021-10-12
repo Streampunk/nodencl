@@ -48,6 +48,8 @@ interface OpenCLBufferInternals {
 	readonly numBytes: number
   /** The time taken to perform the allocation of OpenCL memory for this OpenCLBuffer */
 	readonly creationTime: number
+	/** Field to carry a load time timestamp */
+	loadstamp: number
 	/** Field to carry a frame timestamp */
 	timestamp: number
 
@@ -104,6 +106,8 @@ export type OpenCLBuffer = Buffer & OpenCLBufferFunctions & OpenCLBufferInternal
 export interface KernelParams {
 	[key: string]: unknown
 }
+
+export type CommandQueues = { load: number, process: number, unload: number }
 
 /**
  * Timings object returned by the Program run function. These timings are only associated with work
@@ -168,7 +172,7 @@ export class clContext {
 	readonly logger: { log: Function, warn: Function, error: Function }
 	readonly buffers: ReadonlyArray<ContextBuffer>
 	readonly bufIndex: number
-	readonly queue: { load: number, process: number, unload: number }
+	readonly queue: CommandQueues
 	readonly context: {	svmCaps: number, platformIndex: number, deviceIndex: number, numQueues: number }
 
 	/**

@@ -57,8 +57,12 @@ function clContext(params, logger) {
   this.queue = { load: 0, process: params.overlapping ? 1 : 0, unload: params.overlapping ? 2 : 0 };
   this.context = undefined;
 
-  this.logBuffers = () => this.buffers.forEach(el => 
-    this.logger.log(`${el.index}: ${el.owner} ${el.length} bytes ${el.reserved?'reserved':'available'}`));
+  this.logBuffers = () => {
+    const logBufs = this.buffers.slice(0).sort((a, b) => a.index - b.index);
+    logBufs.forEach(el => {
+      this.logger.log(`${el.index}: ${el.owner} ${el.length} bytes ${el.refs} refs ${el.reserved?'reserved':'available'}`);
+    });
+  };
 
   this.checkContext = () => {
     if (undefined === this.context) throw new Error('clContext must be initialised');
@@ -102,6 +106,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
     // this.logger.log(`reuse ${buf.index}: ${owner} <- ${buf.owner} ${numBytes} bytes`);
     buf.reserved = true;
     buf.owner = owner;
+    buf.loadstamp = 0;
     buf.timestamp = 0;
     buf.refs = 1;
     return buf;
@@ -118,6 +123,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
         buf.bufDir = bufDir;
         buf.bufType = bufType;
         buf.imageDims = imageDims;
+        buf.loadstamp = 0;
         buf.timestamp = 0;
         buf.refs = 1;
         buf.addRef = () => addReference(buf, this.buffers);

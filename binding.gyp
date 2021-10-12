@@ -13,6 +13,9 @@
         "src/cl_memory.cc"
       ],
       "include_dirs": [ "include" ],
+      "msvs_settings": {
+        "VCCLCompilerTool": { "ExceptionHandling": 1 }
+      },
       "conditions": [
         ["OS=='linux'", {
           "cflags_cc": [

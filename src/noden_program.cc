@@ -139,7 +139,7 @@ void buildExecute(napi_env env, void* data) {
     nullptr, &error);
   ASYNC_CL_ERROR;
 
-  const char* buildOptions = "-cl-kernel-arg-info";
+  const char* buildOptions = "-cl-kernel-arg-info -cl-std=CL3.0";
   error = clBuildProgram(c->program, 0, nullptr, buildOptions, nullptr, nullptr);
   if (error != CL_SUCCESS) {
     size_t len;

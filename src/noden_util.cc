@@ -13,16 +13,11 @@
   limitations under the License.
 */
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
+#include "noden_util.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <chrono>
-#include "noden_util.h"
 #include "node_api.h"
 
 napi_status checkStatus(napi_env env, napi_status status,

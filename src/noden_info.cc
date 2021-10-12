@@ -13,15 +13,9 @@
   limitations under the License.
 */
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
-#include <vector>
-#include <inttypes.h>
-#include "noden_util.h"
 #include "noden_info.h"
+#include "noden_util.h"
+#include <inttypes.h>
 
 const char* getDeviceMemCacheType(uint32_t value) {
   switch (value) {

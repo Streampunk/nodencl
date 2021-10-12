@@ -16,11 +16,7 @@
 #ifndef CL_MEMORY_H
 #define CL_MEMORY_H
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
+#include "cl_include.h"
 #include <stdint.h>
 #include <memory>
 #include <string>

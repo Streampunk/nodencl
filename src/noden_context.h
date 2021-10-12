@@ -16,11 +16,7 @@
 #ifndef NODEN_CONTEXT_H
 #define NODEN_CONTEXT_H
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
+#include "cl_include.h"
 #include <stdio.h>
 #include <string>
 #include <vector>

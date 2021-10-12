@@ -16,11 +16,7 @@
 #ifndef NODEN_UTIL_H
 #define NODEN_UTIL_H
 
-#ifdef __APPLE__
-    #include "OpenCL/opencl.h"
-#else
-    #include "CL/cl.h"
-#endif
+#include "cl_include.h"
 #include <chrono>
 #include <stdio.h>
 #include <string>
