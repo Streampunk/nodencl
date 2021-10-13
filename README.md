@@ -144,6 +144,12 @@ Retrieve the platform info as above for the specific platform selected using `co
 Create an OpenCL program using the `context.createProgram()` method of the context object. This returns a promise that resolves to an OpenCL compiled kernel for an OpenCL _program_ as a program object.
 
 ```Javascript
+await context.initialise();
+```
+
+After creating the context, initialize the context.
+
+```Javascript
 const progPromise = context.createProgram(kernel);
 progPromise.then(program => ..., console.error);
 ```
