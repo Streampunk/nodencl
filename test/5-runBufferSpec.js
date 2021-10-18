@@ -16,8 +16,19 @@
 const addon = require('../index.js');
 const tape = require('tape');
 
-const pi = 0;
-const di = 0;
+let pi = 0;
+let di = 0;
+// Find first CPU or GPU device
+const clDeviceTypes = [ 'CL_DEVICE_TYPE_CPU', 'CL_DEVICE_TYPE_GPU'];
+const platformInfo = addon.getPlatformInfo();
+platformInfo.some((platform, p) => platform.devices.find((device, d) => {
+  if (clDeviceTypes.indexOf(device.type[0]) >= 0) {
+    pi = p;
+    di = d;
+    return true;
+  } else return false;
+}));
+
 const properties = { platformIndex: pi, deviceIndex: di };
 function createContext(description, cb) {
   tape(description, async t => {
@@ -61,7 +72,6 @@ const createProgram = function(clContext, kernel) {
 const bufDirs = [ ['readonly', 'writeonly'], ['readonly', 'readwrite'], ['readwrite', 'writeonly'], ['readwrite', 'readwrite'] ];
 const svmTypes = [];
 
-const platformInfo = addon.getPlatformInfo();
 platformInfo.forEach((platform, pi) => {
   svmTypes.push([]);
   svmTypes[pi].push([]);
