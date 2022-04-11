@@ -96,7 +96,7 @@ clContext.prototype.checkAlloc = async function(cb) {
   return result;
 };
 
-clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, imageDims, owner) {
+clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, imageDims, owner, id) {
   if (!bufType) bufType = 'none';
   if (!imageDims) imageDims = {};
   const buf = this.buffers.find(el => 
@@ -108,6 +108,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
     buf.owner = owner;
     buf.loadstamp = 0;
     buf.timestamp = 0;
+    buf.id = id;
     buf.refs = 1;
     return buf;
   } else return this.checkAlloc(() => {
@@ -125,6 +126,7 @@ clContext.prototype.createBuffer = async function(numBytes, bufDir, bufType, ima
         buf.imageDims = imageDims;
         buf.loadstamp = 0;
         buf.timestamp = 0;
+        buf.id = id;
         buf.refs = 1;
         buf.addRef = () => addReference(buf, this.buffers);
         buf.release = () => releaseReference(buf);
