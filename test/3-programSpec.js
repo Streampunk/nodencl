@@ -58,8 +58,19 @@ function createContext(description, properties, cb) {
   });
 }
 
-const pi = 0;
-const di = 0;
+let pi = 0;
+let di = 0;
+// Find first CPU or GPU device
+const clDeviceTypes = [ 'CL_DEVICE_TYPE_CPU', 'CL_DEVICE_TYPE_GPU'];
+const platformInfo = addon.getPlatformInfo();
+platformInfo.some((platform, p) => platform.devices.find((device, d) => {
+  if (clDeviceTypes.indexOf(device.type[0]) >= 0) {
+    pi = p;
+    di = d;
+    return true;
+  } else return false;
+}));
+
 createContext('Create program with buffer parameters', { platformIndex: pi, deviceIndex: di }, async (t, clContext) => {
   const workItemsPerGroup = 64;
   const globalWorkItems = 4096;

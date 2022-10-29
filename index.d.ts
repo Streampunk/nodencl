@@ -52,6 +52,8 @@ interface OpenCLBufferInternals {
 	loadstamp: number
 	/** Field to carry a frame timestamp */
 	timestamp: number
+	/** Field to carry a frame unique id */
+	id: string | undefined
 
 	// Internal parameters
 	readonly numQueues: number
@@ -212,6 +214,7 @@ export class clContext {
 	 * @param bufType The type of Shared Virtual Memory to be used for the buffer
 	 * @param imageDims The image dimensions to be used if this buffer is to be used as a kernel image type parameter
 	 * @param owner Name that can be helpful in logging and enables resource management via a cache
+	 * @param id Optional unique id for the buffer
 	 * @returns Promise that resolves to an OpenCLBuffer object holding OpenCL memory allocations
 	 */
 	createBuffer(
@@ -219,7 +222,8 @@ export class clContext {
 		bufDir: BufDir,
 		bufType: BufSVMType,
 		imageDims?: ImageDims,
-		owner?: string
+		owner?: string,
+		id?: string
 	): Promise<OpenCLBuffer>
 
   /** Log any buffer allocations that have had the owner parameter set */

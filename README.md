@@ -200,6 +200,8 @@ The fourth optional argument is required if a buffer is to be used as input or o
 
 The fifth optional argument is a string that allows allocations to have an owner name associated with them. This can be helpful in logging and enables resource management as follows.
 
+The sixth optional argument is a string that allows callers to apply a unique id to the buffer at creation.
+
 Graphics RAM is a limited resource. To help manage this nodencl includes a resource management system that allows buffer allocations to be referenced and released. When a buffer is created with an owner, it is marked as 'reserved'. The buffer provides two methods '`addRef()`' and '`release()`' that are used to control the buffer lifetime.
 
 `buffer.addRef()` should be called before the buffer is passed as a parameter to a kernel function, `buffer.release()` should be called when the buffer (and its contents) are no longer required. When `release` is called if there are no outstanding references (from `addRef`) then the buffer will no longer be marked as reserved. This means that when a caller requests to create a new buffer with the same attributes they can be returned the unreserved existing buffer.

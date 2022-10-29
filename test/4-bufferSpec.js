@@ -38,8 +38,8 @@ const bufDirs = [ 'readonly', 'writeonly', 'readwrite' ];
 const svmTypes = [];
 
 const platformInfo = addon.getPlatformInfo();
-svmTypes.push([]);
 platformInfo.forEach((platform, pi) => {
+  svmTypes.push([]);
   svmTypes[pi].push([]);
   platform.devices.forEach((device, di) => {
     svmTypes[pi][di].push('none');
