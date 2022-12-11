@@ -330,8 +330,8 @@ napi_value createBuffer(napi_env env, napi_callback_info info) {
     delete c;
     return nullptr;
   }
-  int32_t paramSize;
-  status = napi_get_value_int32(env, args[0], &paramSize);
+  int64_t paramSize;
+  status = napi_get_value_int64(env, args[0], &paramSize);
   CHECK_STATUS;
   if (paramSize < 0) {
     status = napi_throw_error(env, nullptr, "Size of the buffer cannot be negative.");
