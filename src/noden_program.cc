@@ -169,11 +169,13 @@ void buildExecute(napi_env env, void* data) {
 
   if (requestedWorkItemsSize > deviceWorkGroupSize) {
     c->status = NODEN_OUT_OF_RANGE;
-    char* errorMsg = (char *) malloc(200);
-    sprintf(errorMsg, "Parameter workItemsPerGroup %s is larger than the available workgroup size (%zd) for platform %i.",
-            wigss.str().c_str(), deviceWorkGroupSize, c->platformIndex);
+    std::string wigs = wigss.str();
+    size_t msgSize = wigs.size() + 200;
+    char* errorMsg = (char *) malloc(msgSize);
+    snprintf(errorMsg, msgSize, "Parameter workItemsPerGroup %s is larger than the available workgroup size (%zd) for platform %i.",
+             wigs.c_str(), deviceWorkGroupSize, c->platformIndex);
     c->errorMsg = std::string(errorMsg);
-    delete[] errorMsg;
+    free(errorMsg);
     return;
   }
 
